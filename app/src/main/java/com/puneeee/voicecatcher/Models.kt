@@ -15,6 +15,7 @@ data class Task(
     val title: String,
     val priority: ReminderPriority,
     val dueAt: LocalDateTime? = null,
+    val repeatMinutes: Int? = null,
     val status: TaskStatus = TaskStatus.OPEN,
 )
 

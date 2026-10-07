@@ -54,7 +54,7 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         TaskStore(this).load()
-            .filter { it.status == TaskStatus.OPEN && it.priority == ReminderPriority.P1 }
+            .filter { it.status == TaskStatus.OPEN && it.dueAt != null }
             .forEach { ReminderScheduler.schedule(this, it) }
     }
 }
@@ -68,6 +68,7 @@ private fun VoiceCatcherApp() {
     val locationCapture = remember { LocationCapture(context.applicationContext) }
     var voiceStatus by remember { mutableStateOf("Tap the microphone and say a task or reminder.") }
     var typedTask by remember { mutableStateOf("") }
+    var repeatMinutesText by remember { mutableStateOf("") }
     var searchQuery by remember { mutableStateOf("") }
     var exactAlarmNeeded by remember { mutableStateOf(false) }
 
@@ -77,23 +78,22 @@ private fun VoiceCatcherApp() {
         persist()
         return ReminderScheduler.schedule(context, task)
     }
-    fun saveCapture(transcript: String, location: CaptureLocation?, outcome: String, priority: ReminderPriority, dueAt: LocalDateTime? = null) {
+    fun saveCapture(transcript: String, location: CaptureLocation?, outcome: String) {
         val capture = CaptureRecord(transcript = transcript, capturedAt = LocalDateTime.now(), location = location, outcome = outcome)
         captures.add(0, capture)
         store.saveCaptures(captures)
-        BackendSync.upload(capture, priority, dueAt)
     }
     fun handleTranscript(transcript: String, location: CaptureLocation?) {
         when (val action = VoiceCommandParser.parse(transcript)) {
             is VoiceAction.CreateTask -> {
-                val scheduled = addTask(Task(title = action.title, priority = action.priority, dueAt = action.dueAt))
+                val scheduled = addTask(Task(title = action.title, priority = action.priority, dueAt = action.dueAt, repeatMinutes = action.repeatMinutes))
                 exactAlarmNeeded = !scheduled
                 voiceStatus = if (action.priority == ReminderPriority.P1) {
                     "Added alarm: ${action.title}. ${action.dueAt?.format(DateTimeFormatter.ofPattern("EEE h:mm a"))}."
                 } else {
                     "Added to your to-do list: ${action.title}."
                 }
-                saveCapture(transcript, location, voiceStatus, action.priority, action.dueAt)
+                saveCapture(transcript, location, voiceStatus)
             }
             is VoiceAction.CompleteTask -> {
                 val index = tasks.indexOfFirst { it.status == TaskStatus.OPEN && it.title.contains(action.query, ignoreCase = true) }
@@ -104,11 +104,11 @@ private fun VoiceCatcherApp() {
                     persist()
                     voiceStatus = "Marked ‘${tasks[index].title}’ as done."
                 }
-                saveCapture(transcript, location, voiceStatus, ReminderPriority.P2)
+                saveCapture(transcript, location, voiceStatus)
             }
             is VoiceAction.Clarify -> {
                 voiceStatus = action.message
-                saveCapture(transcript, location, voiceStatus, ReminderPriority.P2)
+                saveCapture(transcript, location, voiceStatus)
             }
         }
     }
@@ -240,6 +240,7 @@ private fun TaskCard(task: Task, onComplete: () -> Unit, onDelete: () -> Unit) {
                 Spacer(Modifier.height(4.dp))
                 Text(task.title, style = MaterialTheme.typography.titleMedium)
                 task.dueAt?.let { Text(it.format(DateTimeFormatter.ofPattern("EEE, h:mm a")), color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                task.repeatMinutes?.let { Text("Repeats every $it minutes until done", color = MaterialTheme.colorScheme.onSurfaceVariant) }
             }
             if (task.status == TaskStatus.DONE) Text("Done", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
             else TextButton(onClick = onComplete) { Text("Done") }

@@ -19,6 +19,7 @@ class TaskStore(context: Context) {
                     title = item.getString("title"),
                     priority = ReminderPriority.valueOf(item.getString("priority")),
                     dueAt = item.optString("dueAt").takeIf { it.isNotBlank() }?.let(LocalDateTime::parse),
+                    repeatMinutes = item.optInt("repeatMinutes", 0).takeIf { it > 0 },
                     status = TaskStatus.valueOf(item.getString("status")),
                 ))
             }
@@ -33,9 +34,15 @@ class TaskStore(context: Context) {
                 .put("title", task.title)
                 .put("priority", task.priority.name)
                 .put("dueAt", task.dueAt?.toString().orEmpty())
+                .put("repeatMinutes", task.repeatMinutes)
                 .put("status", task.status.name))
         }
         preferences.edit().putString("tasks", values.toString()).apply()
+    }
+
+    fun updateTask(updated: Task) {
+        val tasks = load().map { if (it.id == updated.id) updated else it }
+        save(tasks)
     }
 
     fun loadCaptures(): List<CaptureRecord> = runCatching {

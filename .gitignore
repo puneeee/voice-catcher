@@ -1,7 +1,5 @@
 .gradle/
 .tooling/
-.env
-backend/.env
 .idea/
 local.properties
 build/
