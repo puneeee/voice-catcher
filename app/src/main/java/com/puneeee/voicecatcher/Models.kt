@@ -17,3 +17,17 @@ data class Task(
     val dueAt: LocalDateTime? = null,
     val status: TaskStatus = TaskStatus.OPEN,
 )
+
+data class CaptureLocation(
+    val latitude: Double,
+    val longitude: Double,
+    val accuracyMeters: Float? = null,
+)
+
+data class CaptureRecord(
+    val id: String = UUID.randomUUID().toString(),
+    val transcript: String,
+    val capturedAt: LocalDateTime,
+    val location: CaptureLocation? = null,
+    val outcome: String,
+)

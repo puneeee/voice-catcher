@@ -12,6 +12,7 @@ sealed interface VoiceAction {
 object VoiceCommandParser {
     private val completionPattern = Regex("""^(?:i )?(?:completed|finished|done with|mark)\s+(.+?)(?:\s+(?:as\s+)?done)?$""", RegexOption.IGNORE_CASE)
     private val timePattern = Regex("""\bat\s+(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)\b""", RegexOption.IGNORE_CASE)
+    private val urgentPattern = Regex("""\b(emergency|urgent|asap|critical|immediately)\b""", RegexOption.IGNORE_CASE)
 
     fun parse(transcript: String, now: LocalDateTime = LocalDateTime.now()): VoiceAction {
         val cleaned = transcript.trim().replace(Regex("[.!?]+$"), "")
@@ -19,8 +20,17 @@ object VoiceCommandParser {
         completionPattern.find(cleaned)?.groupValues?.getOrNull(1)?.trim()?.takeIf { it.isNotBlank() }?.let {
             return VoiceAction.CompleteTask(it)
         }
-        if (cleaned.contains("remind me", ignoreCase = true)) {
-            val time = timePattern.find(cleaned) ?: return VoiceAction.Clarify("For an alarm, include a time such as ‘remind me at 5 PM to have lunch’.")
+        val isUrgent = urgentPattern.containsMatchIn(cleaned)
+        if (cleaned.contains("remind me", ignoreCase = true) || isUrgent) {
+            val time = timePattern.find(cleaned)
+            if (time == null && !isUrgent) return VoiceAction.Clarify("For an alarm, include a time such as ‘remind me at 5 PM to have lunch’.")
+            if (time == null) {
+                return VoiceAction.CreateTask(
+                    title = cleaned.replace(urgentPattern, "").trim().ifBlank { "Urgent reminder" },
+                    priority = ReminderPriority.P1,
+                    dueAt = now.plusSeconds(10),
+                )
+            }
             val hourInput = time.groupValues[1].toInt()
             val minute = time.groupValues[2].ifBlank { "0" }.toInt()
             val suffix = time.groupValues[3].lowercase().replace(".", "")

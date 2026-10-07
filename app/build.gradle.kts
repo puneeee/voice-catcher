@@ -16,7 +16,17 @@ android {
         versionName = "0.1.0"
     }
 
-    buildFeatures { compose = true }
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
+
+    val backendUrl = providers.gradleProperty("VOICE_CATCHER_BACKEND_URL").orNull.orEmpty().replace("\"", "\\\"")
+    val pilotToken = providers.gradleProperty("VOICE_CATCHER_PILOT_TOKEN").orNull.orEmpty().replace("\"", "\\\"")
+    defaultConfig {
+        buildConfigField("String", "BACKEND_BASE_URL", "\"$backendUrl\"")
+        buildConfigField("String", "PILOT_TOKEN", "\"$pilotToken\"")
+    }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

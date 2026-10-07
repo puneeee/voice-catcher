@@ -42,6 +42,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
 class MainActivity : ComponentActivity() {
@@ -63,8 +64,11 @@ private fun VoiceCatcherApp() {
     val context = LocalContext.current
     val store = remember { TaskStore(context.applicationContext) }
     val tasks = remember { mutableStateListOf<Task>().apply { addAll(store.load()) } }
+    val captures = remember { mutableStateListOf<CaptureRecord>().apply { addAll(store.loadCaptures()) } }
+    val locationCapture = remember { LocationCapture(context.applicationContext) }
     var voiceStatus by remember { mutableStateOf("Tap the microphone and say a task or reminder.") }
     var typedTask by remember { mutableStateOf("") }
+    var searchQuery by remember { mutableStateOf("") }
     var exactAlarmNeeded by remember { mutableStateOf(false) }
 
     fun persist() = store.save(tasks)
@@ -73,7 +77,13 @@ private fun VoiceCatcherApp() {
         persist()
         return ReminderScheduler.schedule(context, task)
     }
-    fun handleTranscript(transcript: String) {
+    fun saveCapture(transcript: String, location: CaptureLocation?, outcome: String, priority: ReminderPriority, dueAt: LocalDateTime? = null) {
+        val capture = CaptureRecord(transcript = transcript, capturedAt = LocalDateTime.now(), location = location, outcome = outcome)
+        captures.add(0, capture)
+        store.saveCaptures(captures)
+        BackendSync.upload(capture, priority, dueAt)
+    }
+    fun handleTranscript(transcript: String, location: CaptureLocation?) {
         when (val action = VoiceCommandParser.parse(transcript)) {
             is VoiceAction.CreateTask -> {
                 val scheduled = addTask(Task(title = action.title, priority = action.priority, dueAt = action.dueAt))
@@ -83,6 +93,7 @@ private fun VoiceCatcherApp() {
                 } else {
                     "Added to your to-do list: ${action.title}."
                 }
+                saveCapture(transcript, location, voiceStatus, action.priority, action.dueAt)
             }
             is VoiceAction.CompleteTask -> {
                 val index = tasks.indexOfFirst { it.status == TaskStatus.OPEN && it.title.contains(action.query, ignoreCase = true) }
@@ -93,23 +104,28 @@ private fun VoiceCatcherApp() {
                     persist()
                     voiceStatus = "Marked ‘${tasks[index].title}’ as done."
                 }
+                saveCapture(transcript, location, voiceStatus, ReminderPriority.P2)
             }
-            is VoiceAction.Clarify -> voiceStatus = action.message
+            is VoiceAction.Clarify -> {
+                voiceStatus = action.message
+                saveCapture(transcript, location, voiceStatus, ReminderPriority.P2)
+            }
         }
     }
     val recognizer = remember {
         VoiceRecognizer(
             context.applicationContext,
             onResult = { transcript ->
-                voiceStatus = "Heard: “$transcript”"
-                handleTranscript(transcript)
+                voiceStatus = "Saving the capture and its location…"
+                locationCapture.capture { location -> handleTranscript(transcript, location) }
             },
             onState = { voiceStatus = it },
         )
     }
     DisposableEffect(Unit) { onDispose { recognizer.destroy() } }
-    val microphonePermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) recognizer.start() else voiceStatus = "Microphone permission is required for voice capture."
+    val capturePermissions = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { permissions ->
+        if (permissions[Manifest.permission.RECORD_AUDIO] == true) recognizer.start()
+        else voiceStatus = "Microphone permission is required for voice capture."
     }
     val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         voiceStatus = if (granted) "Notifications enabled. P1 alarms can alert you." else "Notifications are off, so alarms cannot appear as alerts."
@@ -131,8 +147,11 @@ private fun VoiceCatcherApp() {
                         Text("Voice command", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                         Text(voiceStatus)
                         Button(onClick = {
-                            if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) recognizer.start()
-                            else microphonePermission.launch(Manifest.permission.RECORD_AUDIO)
+                            val microphoneAllowed = context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+                            val locationAllowed = context.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
+                                context.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                            if (microphoneAllowed && locationAllowed) recognizer.start()
+                            else capturePermissions.launch(arrayOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
                         }) { Text("Speak now") }
                         Text("Try: “Remind me at 5 PM to have lunch” or “Add buy milk to my todo list.”", style = MaterialTheme.typography.bodySmall)
                     }
@@ -154,6 +173,25 @@ private fun VoiceCatcherApp() {
                         typedTask = ""
                     }
                 }) { Text("Add task") }
+            }
+            item {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Search old voice notes, ideas, places, or dates") },
+                    singleLine = true,
+                )
+            }
+            val matches = captures.filter { capture ->
+                searchQuery.isBlank() || capture.transcript.contains(searchQuery, ignoreCase = true) ||
+                    capture.outcome.contains(searchQuery, ignoreCase = true) ||
+                    capture.capturedAt.format(DateTimeFormatter.ofPattern("dd MMM yyyy h:mm a")).contains(searchQuery, ignoreCase = true)
+            }
+            if (searchQuery.isNotBlank()) {
+                item { Text("Voice history", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold) }
+                if (matches.isEmpty()) item { Text("No matching captured voice notes.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                items(matches, key = { it.id }) { capture -> CaptureHistoryCard(capture) }
             }
             item {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -206,6 +244,27 @@ private fun TaskCard(task: Task, onComplete: () -> Unit, onDelete: () -> Unit) {
             if (task.status == TaskStatus.DONE) Text("Done", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
             else TextButton(onClick = onComplete) { Text("Done") }
             TextButton(onClick = onDelete) { Text("Delete") }
+        }
+    }
+}
+
+@Composable
+private fun CaptureHistoryCard(capture: CaptureRecord) {
+    Card {
+        Column(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(capture.transcript, style = MaterialTheme.typography.titleMedium)
+            Text(capture.capturedAt.format(DateTimeFormatter.ofPattern("dd MMM yyyy, h:mm a")), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            capture.location?.let { location ->
+                Text(
+                    "Location: %.5f, %.5f%s".format(
+                        location.latitude,
+                        location.longitude,
+                        location.accuracyMeters?.let { " · ±${it.toInt()} m" }.orEmpty(),
+                    ),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } ?: Text("Location was not available for this capture.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(capture.outcome, style = MaterialTheme.typography.bodySmall)
         }
     }
 }

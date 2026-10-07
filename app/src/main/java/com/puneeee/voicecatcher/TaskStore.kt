@@ -37,4 +37,46 @@ class TaskStore(context: Context) {
         }
         preferences.edit().putString("tasks", values.toString()).apply()
     }
+
+    fun loadCaptures(): List<CaptureRecord> = runCatching {
+        val captures = JSONArray(preferences.getString("captures", "[]"))
+        buildList {
+            for (index in 0 until captures.length()) {
+                val item = captures.getJSONObject(index)
+                val location = item.optJSONObject("location")?.let {
+                    CaptureLocation(
+                        latitude = it.getDouble("latitude"),
+                        longitude = it.getDouble("longitude"),
+                        accuracyMeters = it.optDouble("accuracyMeters", Double.NaN).takeUnless(Double::isNaN)?.toFloat(),
+                    )
+                }
+                add(CaptureRecord(
+                    id = item.getString("id"),
+                    transcript = item.getString("transcript"),
+                    capturedAt = LocalDateTime.parse(item.getString("capturedAt")),
+                    location = location,
+                    outcome = item.getString("outcome"),
+                ))
+            }
+        }
+    }.getOrDefault(emptyList())
+
+    fun saveCaptures(captures: List<CaptureRecord>) {
+        val values = JSONArray()
+        captures.forEach { capture ->
+            val value = JSONObject()
+                .put("id", capture.id)
+                .put("transcript", capture.transcript)
+                .put("capturedAt", capture.capturedAt.toString())
+                .put("outcome", capture.outcome)
+            capture.location?.let { location ->
+                value.put("location", JSONObject()
+                    .put("latitude", location.latitude)
+                    .put("longitude", location.longitude)
+                    .put("accuracyMeters", location.accuracyMeters))
+            }
+            values.put(value)
+        }
+        preferences.edit().putString("captures", values.toString()).apply()
+    }
 }
