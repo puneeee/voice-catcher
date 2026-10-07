@@ -17,10 +17,3 @@ data class Task(
     val dueAt: LocalDateTime? = null,
     val status: TaskStatus = TaskStatus.OPEN,
 )
-
-sealed interface CaptureState {
-    data object Idle : CaptureState
-    data object Recording : CaptureState
-    data class Saved(val fileName: String) : CaptureState
-    data class Failed(val message: String) : CaptureState
-}

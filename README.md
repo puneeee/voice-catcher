@@ -6,9 +6,9 @@ An Android-first voice companion that turns natural speech into reliable reminde
 
 - Kotlin + Jetpack Compose Android app shell
 - Today screen with priority-labelled items
-- Real microphone recording to the app cache after permission is granted
-- P1/P2 reminder model ready for the reminder engine
-- Explicit architecture boundaries for transcription, AI action extraction, and WhatsApp delivery
+- Android speech recognition for English and Hinglish-style voice commands
+- Persistent P1/P2 tasks, local exact P1 alarms, and reminder notifications
+- Explicit architecture boundaries for cloud AI action extraction and WhatsApp delivery
 
 ## Product decisions
 
@@ -24,9 +24,9 @@ Read the full product and technical plan in [docs/PRODUCT_PLAN.md](docs/PRODUCT_
 1. Open this folder in Android Studio.
 2. Let Android Studio install the Android SDK and create/use the Gradle wrapper if it is not already available on the machine.
 3. Select an Android 8.0+ device or emulator and run `app`.
-4. Grant microphone access, then tap **Capture voice note** to begin and **Stop and save** when finished.
+4. Grant microphone and notification access. Tap **Speak now** and say a task or reminder.
 
-> This first commit deliberately does not connect a cloud AI provider, Meta WhatsApp Cloud API, or an alarm scheduler. Those integrations need server-side credentials, approved WhatsApp templates, and explicit user configuration; the interfaces are documented in the product plan.
+> The offline app recognizes simple commands, stores tasks, and schedules P1 alarms. Cloud AI and Meta WhatsApp Cloud API remain separate integrations because they need server-side credentials, explicit opt-in, and approved WhatsApp templates.
 
 ## Repository layout
 
