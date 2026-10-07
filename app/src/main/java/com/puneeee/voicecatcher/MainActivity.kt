@@ -63,7 +63,21 @@ class MainActivity : ComponentActivity() {
 private fun VoiceCatcherApp() {
     val context = LocalContext.current
     val store = remember { TaskStore(context.applicationContext) }
-    val tasks = remember { mutableStateListOf<Task>().apply { addAll(store.load()) } }
+    val tasks = remember {
+        val saved = store.load()
+        val migrated = saved.map { task ->
+            if (task.priority != ReminderPriority.P2) task else {
+                when (val action = VoiceCommandParser.parse(task.title)) {
+                    is VoiceAction.CreateTask -> if (action.priority == ReminderPriority.P1) {
+                        task.copy(title = action.title, priority = ReminderPriority.P1, dueAt = action.dueAt, repeatMinutes = null)
+                    } else task
+                    else -> task
+                }
+            }
+        }
+        if (migrated != saved) store.save(migrated)
+        mutableStateListOf<Task>().apply { addAll(migrated) }
+    }
     val captures = remember { mutableStateListOf<CaptureRecord>().apply { addAll(store.loadCaptures()) } }
     val locationCapture = remember { LocationCapture(context.applicationContext) }
     var voiceStatus by remember { mutableStateOf("Tap the microphone and say a task or reminder.") }
