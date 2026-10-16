@@ -40,6 +40,9 @@
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
         </receiver>
+        <receiver
+            android:name=".DailyBriefReceiver"
+            android:exported="false" />
         <service
             android:name=".AlarmService"
             android:foregroundServiceType="mediaPlayback"

@@ -92,6 +92,9 @@ private fun VoiceCatcherApp() {
     var reminderSetupMessage by remember { mutableStateOf<String?>(null) }
     var isSpeaking by remember { mutableStateOf(false) }
     var eraseConfirmationNeeded by remember { mutableStateOf(false) }
+    val savedDailyTimes = remember { DailyBriefScheduler.times(context) }
+    var morningPlanTime by remember { mutableStateOf(savedDailyTimes?.first ?: "07:00") }
+    var eveningReviewTime by remember { mutableStateOf(savedDailyTimes?.second ?: "20:00") }
 
     fun persist() = store.save(tasks)
     fun addTask(task: Task): ReminderScheduler.Result {
@@ -168,6 +171,7 @@ private fun VoiceCatcherApp() {
     LaunchedEffect(Unit) {
         AlarmService.ensureChannel(context)
         ReminderReceiver.ensureChannel(context)
+        DailyBriefReceiver.ensureChannel(context)
     }
 
     Scaffold { padding ->
@@ -207,6 +211,20 @@ private fun VoiceCatcherApp() {
                                 .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName)
                                 .putExtra(android.provider.Settings.EXTRA_CHANNEL_ID, AlarmService.CHANNEL_ID))
                         }) { Text("Check P1 alarm notification settings") }
+                    }
+                }
+            }
+            item {
+                Card {
+                    Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Daily planning", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        Text("Receive a local morning plan and evening task review. Use 24-hour times.")
+                        OutlinedTextField(value = morningPlanTime, onValueChange = { morningPlanTime = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Morning plan time, e.g. 07:00") }, singleLine = true)
+                        OutlinedTextField(value = eveningReviewTime, onValueChange = { eveningReviewTime = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Evening review time, e.g. 20:00") }, singleLine = true)
+                        Button(onClick = {
+                            reminderSetupMessage = DailyBriefScheduler.saveAndSchedule(context, morningPlanTime, eveningReviewTime)
+                            if (reminderSetupMessage == null) voiceStatus = "Daily plan and evening review are scheduled."
+                        }) { Text("Save daily times") }
                     }
                 }
             }
