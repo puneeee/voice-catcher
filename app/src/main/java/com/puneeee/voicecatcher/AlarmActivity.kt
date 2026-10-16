@@ -1,6 +1,5 @@
 package com.puneeee.voicecatcher
 
-import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -22,7 +21,7 @@ class AlarmActivity : ComponentActivity() {
     }
 
     private fun stopAlarm() {
-        stopService(Intent(this, AlarmService::class.java))
+        AlarmService.stop(this)
         finish()
     }
 }

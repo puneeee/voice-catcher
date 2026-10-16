@@ -4,6 +4,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.Context
 import android.content.Intent
 import android.media.AudioAttributes
 import android.media.Ringtone
@@ -19,7 +20,13 @@ class AlarmService : Service() {
     private var vibrator: Vibrator? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_STOP) {
+            stopAlarm()
+            return START_NOT_STICKY
+        }
         val title = intent?.getStringExtra(ReminderReceiver.EXTRA_TITLE).orEmpty().ifBlank { "Reminder" }
+        stopSoundAndVibration()
+        ActiveAlarmStore.set(this, title)
         startForeground(NOTIFICATION_ID, alarmNotification(title))
         ringtone = RingtoneManager.getRingtone(this, RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)).also {
             it.audioAttributes = AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM).build()
@@ -32,12 +39,26 @@ class AlarmService : Service() {
     }
 
     override fun onDestroy() {
-        ringtone?.stop()
-        vibrator?.cancel()
+        stopSoundAndVibration()
+        ActiveAlarmStore.clear(this)
         super.onDestroy()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    private fun stopAlarm() {
+        stopSoundAndVibration()
+        ActiveAlarmStore.clear(this)
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
+    }
+
+    private fun stopSoundAndVibration() {
+        ringtone?.stop()
+        ringtone = null
+        vibrator?.cancel()
+        vibrator = null
+    }
 
     private fun alarmNotification(title: String): android.app.Notification {
         createChannel()
@@ -47,6 +68,12 @@ class AlarmService : Service() {
             Intent(this, AlarmActivity::class.java).putExtra(ReminderReceiver.EXTRA_TITLE, title),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
+        val stopIntent = PendingIntent.getService(
+            this,
+            1,
+            Intent(this, AlarmService::class.java).setAction(ACTION_STOP),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
             .setContentTitle("P1 alarm")
@@ -54,8 +81,9 @@ class AlarmService : Service() {
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setOngoing(true)
+            .setContentIntent(fullScreenIntent)
             .setFullScreenIntent(fullScreenIntent, true)
-            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Stop", fullScreenIntent)
+            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Stop alarm", stopIntent)
             .build()
     }
 
@@ -70,7 +98,12 @@ class AlarmService : Service() {
     }
 
     companion object {
+        const val ACTION_STOP = "com.puneeee.voicecatcher.STOP_ALARM"
         const val CHANNEL_ID = "p1_alarms"
         private const val NOTIFICATION_ID = 101
+
+        fun stop(context: Context) {
+            context.startService(Intent(context, AlarmService::class.java).setAction(ACTION_STOP))
+        }
     }
 }

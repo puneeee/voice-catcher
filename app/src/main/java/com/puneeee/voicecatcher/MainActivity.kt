@@ -85,6 +85,7 @@ private fun VoiceCatcherApp() {
     var repeatMinutesText by remember { mutableStateOf("") }
     var searchQuery by remember { mutableStateOf("") }
     var exactAlarmNeeded by remember { mutableStateOf(false) }
+    var isSpeaking by remember { mutableStateOf(false) }
 
     fun persist() = store.save(tasks)
     fun addTask(task: Task): Boolean {
@@ -134,6 +135,7 @@ private fun VoiceCatcherApp() {
                 locationCapture.capture { location -> handleTranscript(transcript, location) }
             },
             onState = { voiceStatus = it },
+            onCaptureState = { isSpeaking = it },
         )
     }
     DisposableEffect(Unit) { onDispose { recognizer.destroy() } }
@@ -154,6 +156,7 @@ private fun VoiceCatcherApp() {
             item {
                 Text("Voice Catcher", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
                 Text("Say it once. Keep your day clear.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                TextButton(onClick = { AlarmService.stop(context) }) { Text("Stop a ringing alarm") }
             }
             item {
                 Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
@@ -161,13 +164,17 @@ private fun VoiceCatcherApp() {
                         Text("Voice command", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                         Text(voiceStatus)
                         Button(onClick = {
-                            val microphoneAllowed = context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
-                            val locationAllowed = context.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
-                                context.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
-                            if (microphoneAllowed && locationAllowed) recognizer.start()
-                            else capturePermissions.launch(arrayOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
-                        }) { Text("Speak now") }
-                        Text("Try: “Remind me at 5 PM to have lunch” or “Add buy milk to my todo list.”", style = MaterialTheme.typography.bodySmall)
+                            if (isSpeaking) {
+                                recognizer.finish()
+                            } else {
+                                val microphoneAllowed = context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+                                val locationAllowed = context.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
+                                    context.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                                if (microphoneAllowed && locationAllowed) recognizer.start()
+                                else capturePermissions.launch(arrayOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+                            }
+                        }) { Text(if (isSpeaking) "Finish speaking" else "Start speaking") }
+                        Text("You may pause naturally. It waits five seconds before submitting, or use Finish speaking.", style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }
