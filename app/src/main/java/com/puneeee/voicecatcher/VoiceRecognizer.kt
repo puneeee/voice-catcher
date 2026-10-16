@@ -23,6 +23,7 @@ class VoiceRecognizer(
     private val phrases = mutableListOf<String>()
     private var recognizer: SpeechRecognizer? = null
     private var capturing = false
+    private var sessionId = 0
     private val finishAfterSilence = Runnable { finish() }
 
     fun start() {
@@ -32,10 +33,11 @@ class VoiceRecognizer(
         }
         destroyRecognizer()
         phrases.clear()
+        sessionId++
         capturing = true
         onCaptureState(true)
         onState("Listening… you can pause. Tap Finish speaking when you are done.")
-        startListeningSession()
+        startListeningSession(sessionId)
     }
 
     fun finish() {
@@ -57,8 +59,8 @@ class VoiceRecognizer(
         onCaptureState(false)
     }
 
-    private fun startListeningSession() {
-        if (!capturing) return
+    private fun startListeningSession(expectedSessionId: Int) {
+        if (!capturing || expectedSessionId != sessionId) return
         destroyRecognizer()
         recognizer = SpeechRecognizer.createSpeechRecognizer(context).also { speechRecognizer ->
             speechRecognizer.setRecognitionListener(object : RecognitionListener {
@@ -68,21 +70,26 @@ class VoiceRecognizer(
                 override fun onBufferReceived(buffer: ByteArray?) = Unit
                 override fun onEndOfSpeech() = onState("Short pause detected — still listening.")
                 override fun onError(error: Int) {
-                    if (!capturing) return
-                    // Recognition providers often signal a timeout between phrases.
-                    onState("Listening… continue speaking or tap Finish speaking.")
-                    handler.removeCallbacks(finishAfterSilence)
-                    handler.postDelayed(finishAfterSilence, SILENCE_FINISH_DELAY_MS)
-                    handler.postDelayed({ startListeningSession() }, RESTART_DELAY_MS)
+                    if (!capturing || expectedSessionId != sessionId) return
+                    if (error !in setOf(SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT)) {
+                        onState("Speech recognition stopped. Tap Start speaking and try again.")
+                        finish()
+                    } else {
+                        // Recognition providers commonly signal a timeout between phrases.
+                        onState("Listening… continue speaking or tap Finish speaking.")
+                        handler.removeCallbacks(finishAfterSilence)
+                        handler.postDelayed(finishAfterSilence, SILENCE_FINISH_DELAY_MS)
+                        handler.postDelayed({ startListeningSession(expectedSessionId) }, RESTART_DELAY_MS)
+                    }
                 }
                 override fun onResults(results: Bundle?) {
-                    if (!capturing) return
+                    if (!capturing || expectedSessionId != sessionId) return
                     val phrase = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.trim()
                     if (!phrase.isNullOrBlank() && phrases.lastOrNull() != phrase) phrases.add(phrase)
                     onState("Heard: ${phrases.joinToString(" ")}. Continue or tap Finish speaking.")
                     handler.removeCallbacks(finishAfterSilence)
                     handler.postDelayed(finishAfterSilence, SILENCE_FINISH_DELAY_MS)
-                    handler.postDelayed({ startListeningSession() }, RESTART_DELAY_MS)
+                    handler.postDelayed({ startListeningSession(expectedSessionId) }, RESTART_DELAY_MS)
                 }
                 override fun onPartialResults(partialResults: Bundle?) = Unit
                 override fun onEvent(eventType: Int, params: Bundle?) = Unit
@@ -91,6 +98,7 @@ class VoiceRecognizer(
                 Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
                     .putExtra(RecognizerIntent.EXTRA_LANGUAGE, "en-IN")
                     .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                    .putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
                     .putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 1_000L)
                     .putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 3_500L)
                     .putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 4_000L)

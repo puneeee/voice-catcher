@@ -23,6 +23,7 @@ data class CaptureLocation(
     val latitude: Double,
     val longitude: Double,
     val accuracyMeters: Float? = null,
+    val placeLabel: String? = null,
 )
 
 data class CaptureRecord(

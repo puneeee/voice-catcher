@@ -17,17 +17,22 @@ class AlarmActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val title = intent.getStringExtra(ReminderReceiver.EXTRA_TITLE).orEmpty().ifBlank { "Reminder" }
-        setContent { MaterialTheme { AlarmScreen(title) { stopAlarm() } } }
+        setContent { MaterialTheme { AlarmScreen(title, { snoozeAlarm() }, { stopAlarm() }) } }
     }
 
     private fun stopAlarm() {
         AlarmService.stop(this)
         finish()
     }
+
+    private fun snoozeAlarm() {
+        startService(android.content.Intent(this, AlarmService::class.java).setAction(AlarmService.ACTION_SNOOZE))
+        finish()
+    }
 }
 
 @Composable
-private fun AlarmScreen(title: String, onStop: () -> Unit) {
+private fun AlarmScreen(title: String, onSnooze: () -> Unit, onStop: () -> Unit) {
     Column(
         modifier = Modifier.fillMaxSize(),
         verticalArrangement = Arrangement.Center,
@@ -35,6 +40,7 @@ private fun AlarmScreen(title: String, onStop: () -> Unit) {
     ) {
         Text("P1 alarm", style = MaterialTheme.typography.headlineLarge)
         Text(title, style = MaterialTheme.typography.titleLarge)
-        Button(onClick = onStop) { Text("Stop alarm") }
+        Button(onClick = onSnooze) { Text("Snooze 5 minutes") }
+        Button(onClick = onStop) { Text("Stop and mark done") }
     }
 }

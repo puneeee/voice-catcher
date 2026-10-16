@@ -8,11 +8,17 @@ import android.os.Build
 import java.time.ZoneId
 
 object ReminderScheduler {
-    fun schedule(context: Context, task: Task): Boolean {
-        if (task.dueAt == null || task.status == TaskStatus.DONE) return true
+    enum class Result { SCHEDULED, NOTIFICATIONS_DISABLED, EXACT_ALARMS_DISABLED, PAST_DUE, NOT_REQUIRED }
+
+    fun schedule(context: Context, task: Task): Result {
+        if (task.dueAt == null || task.status == TaskStatus.DONE) return Result.NOT_REQUIRED
+        if (!ReminderSetup.notificationsAllowed(context)) return Result.NOTIFICATIONS_DISABLED
         val alarmManager = context.getSystemService(AlarmManager::class.java)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !alarmManager.canScheduleExactAlarms()) return false
         val triggerAtMillis = task.dueAt.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        if (task.priority == ReminderPriority.P1 && triggerAtMillis <= System.currentTimeMillis()) return Result.PAST_DUE
+        if (task.priority == ReminderPriority.P1 && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !alarmManager.canScheduleExactAlarms()) {
+            return Result.EXACT_ALARMS_DISABLED
+        }
         if (task.priority == ReminderPriority.P1) {
             alarmManager.setAlarmClock(
                 AlarmManager.AlarmClockInfo(triggerAtMillis, openAppIntent(context)),
@@ -21,7 +27,7 @@ object ReminderScheduler {
         } else {
             alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent(context, task))
         }
-        return true
+        return Result.SCHEDULED
     }
 
     fun cancel(context: Context, task: Task) {

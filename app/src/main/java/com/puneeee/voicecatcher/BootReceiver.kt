@@ -7,7 +7,7 @@ import android.content.Intent
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         TaskStore(context).load()
-            .filter { it.status == TaskStatus.OPEN && it.priority == ReminderPriority.P1 }
+            .filter { it.status == TaskStatus.OPEN && it.dueAt != null && it.dueAt.isAfter(java.time.LocalDateTime.now()) }
             .forEach { ReminderScheduler.schedule(context, it) }
     }
 }

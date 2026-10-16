@@ -25,6 +25,8 @@ class ReminderReceiver : BroadcastReceiver() {
         }
         if (task.status == TaskStatus.DONE) return
         if (task.priority == ReminderPriority.P1) {
+            // A P1 is one-shot. Once it fires, never arm the same past alarm again.
+            ReminderScheduler.cancel(context, task)
             ContextCompat.startForegroundService(
                 context,
                 Intent(context, AlarmService::class.java)
@@ -42,7 +44,7 @@ class ReminderReceiver : BroadcastReceiver() {
     }
 
     private fun showRepeatingNotification(context: Context, task: Task) {
-        createChannel(context)
+        ensureChannel(context)
         val doneIntent = PendingIntent.getBroadcast(
             context,
             task.id.hashCode(),
@@ -62,19 +64,19 @@ class ReminderReceiver : BroadcastReceiver() {
         NotificationManagerCompat.from(context).notify(task.id.hashCode(), notification)
     }
 
-    private fun createChannel(context: Context) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-        context.getSystemService(NotificationManager::class.java).createNotificationChannel(
-            NotificationChannel(P2_CHANNEL_ID, "Repeating reminders", NotificationManager.IMPORTANCE_HIGH).apply {
-                description = "P2 reminders that repeat until marked done"
-            },
-        )
-    }
-
     companion object {
         const val ACTION_DONE = "com.puneeee.voicecatcher.DONE"
         const val EXTRA_TITLE = "title"
         const val EXTRA_TASK_ID = "task_id"
         private const val P2_CHANNEL_ID = "p2_reminders"
+
+        fun ensureChannel(context: Context) {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+            context.getSystemService(NotificationManager::class.java).createNotificationChannel(
+                NotificationChannel(P2_CHANNEL_ID, "Repeating reminders", NotificationManager.IMPORTANCE_HIGH).apply {
+                    description = "P2 reminders that repeat until marked done"
+                },
+            )
+        }
     }
 }

@@ -26,7 +26,10 @@ object VoiceCommandParser {
 
         val isPriorityOne = priorityOnePattern.containsMatchIn(cleaned)
         val intervalMatch = intervalPattern.find(cleaned)
-        if (intervalMatch != null && !isPriorityOne) {
+        if (intervalMatch != null && isPriorityOne) {
+            return VoiceAction.Clarify("Use either an urgent P1 alarm with a specific time, or a repeating P2 reminder — not both in one command.")
+        }
+        if (intervalMatch != null) {
             val amount = intervalMatch.groupValues[1].toIntOrNull()
             val unit = intervalMatch.groupValues[2].lowercase()
             val minutes = amount?.times(if (unit.startsWith("hour")) 60 else 1)
@@ -42,7 +45,7 @@ object VoiceCommandParser {
         val time = timePattern.find(cleaned)
         val isReminder = cleaned.contains("remind me", ignoreCase = true) || cleaned.contains("tell me", ignoreCase = true) || cleaned.contains("alarm", ignoreCase = true)
         if (isPriorityOne || isReminder) {
-            val dueAt = time?.let { parseTime(it, cleaned, now) } ?: if (isPriorityOne) now.plusSeconds(10) else null
+            val dueAt = time?.let { parseTime(it, cleaned, now) }
             if (dueAt == null) return VoiceAction.Clarify("For an alarm, include a time such as ‘remind me at 5:15 PM to have lunch’.")
             return VoiceAction.CreateTask(
                 title = taskTitle(cleaned, timePattern),
@@ -61,8 +64,8 @@ object VoiceCommandParser {
     private fun parseTime(match: MatchResult, transcript: String, now: LocalDateTime): LocalDateTime? {
         val hourInput = match.groupValues[1].toIntOrNull() ?: return null
         val minute = match.groupValues[2].ifBlank { "0" }.toIntOrNull() ?: return null
-        if (hourInput !in 1..12 || minute !in 0..59) return null
         val suffix = match.groupValues[3].lowercase().replace(".", "")
+        if (minute !in 0..59 || (suffix.isBlank() && hourInput !in 0..23) || (suffix.isNotBlank() && hourInput !in 1..12)) return null
         val hour24 = when {
             suffix == "am" && hourInput == 12 -> 0
             suffix == "pm" && hourInput != 12 -> hourInput + 12

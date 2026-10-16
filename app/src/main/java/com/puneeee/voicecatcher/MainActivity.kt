@@ -3,6 +3,7 @@ package com.puneeee.voicecatcher
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
@@ -32,6 +33,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -54,7 +56,10 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         TaskStore(this).load()
-            .filter { it.status == TaskStatus.OPEN && it.dueAt != null }
+            .filter { task ->
+                task.status == TaskStatus.OPEN && task.dueAt != null &&
+                    (task.priority == ReminderPriority.P2 || task.dueAt.isAfter(LocalDateTime.now()))
+            }
             .forEach { ReminderScheduler.schedule(this, it) }
     }
 }
@@ -84,11 +89,12 @@ private fun VoiceCatcherApp() {
     var typedTask by remember { mutableStateOf("") }
     var repeatMinutesText by remember { mutableStateOf("") }
     var searchQuery by remember { mutableStateOf("") }
-    var exactAlarmNeeded by remember { mutableStateOf(false) }
+    var reminderSetupMessage by remember { mutableStateOf<String?>(null) }
     var isSpeaking by remember { mutableStateOf(false) }
+    var eraseConfirmationNeeded by remember { mutableStateOf(false) }
 
     fun persist() = store.save(tasks)
-    fun addTask(task: Task): Boolean {
+    fun addTask(task: Task): ReminderScheduler.Result {
         tasks.add(0, task)
         persist()
         return ReminderScheduler.schedule(context, task)
@@ -102,9 +108,15 @@ private fun VoiceCatcherApp() {
         when (val action = VoiceCommandParser.parse(transcript)) {
             is VoiceAction.CreateTask -> {
                 val scheduled = addTask(Task(title = action.title, priority = action.priority, dueAt = action.dueAt, repeatMinutes = action.repeatMinutes))
-                exactAlarmNeeded = !scheduled
+                reminderSetupMessage = when (scheduled) {
+                    ReminderScheduler.Result.NOTIFICATIONS_DISABLED -> "Enable notifications before this reminder can alert you."
+                    ReminderScheduler.Result.EXACT_ALARMS_DISABLED -> "Allow exact alarms before this P1 alarm can ring."
+                    ReminderScheduler.Result.PAST_DUE -> "That P1 time has already passed, so it was not armed."
+                    else -> null
+                }
                 voiceStatus = if (action.priority == ReminderPriority.P1) {
-                    "Added alarm: ${action.title}. ${action.dueAt?.format(DateTimeFormatter.ofPattern("EEE h:mm a"))}."
+                    if (scheduled == ReminderScheduler.Result.SCHEDULED) "Alarm set: ${action.title}. ${action.dueAt?.format(DateTimeFormatter.ofPattern("EEE h:mm a"))}."
+                    else "Alarm saved but not armed. ${reminderSetupMessage.orEmpty()}"
                 } else {
                     "Added to your to-do list: ${action.title}."
                 }
@@ -115,6 +127,7 @@ private fun VoiceCatcherApp() {
                 if (index < 0) {
                     voiceStatus = "I could not find an open task matching ‘${action.query}’."
                 } else {
+                    ReminderScheduler.cancel(context, tasks[index])
                     tasks[index] = tasks[index].copy(status = TaskStatus.DONE)
                     persist()
                     voiceStatus = "Marked ‘${tasks[index].title}’ as done."
@@ -144,7 +157,17 @@ private fun VoiceCatcherApp() {
         else voiceStatus = "Microphone permission is required for voice capture."
     }
     val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        voiceStatus = if (granted) "Notifications enabled. P1 alarms can alert you." else "Notifications are off, so alarms cannot appear as alerts."
+        voiceStatus = if (granted) "Notifications enabled. Open reminders have been armed." else "Notifications are off, so alarms cannot appear as alerts."
+        if (granted) {
+            tasks.filter { it.status == TaskStatus.OPEN && it.dueAt != null && (it.priority == ReminderPriority.P2 || it.dueAt.isAfter(LocalDateTime.now())) }
+                .forEach { ReminderScheduler.schedule(context, it) }
+            reminderSetupMessage = null
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        AlarmService.ensureChannel(context)
+        ReminderReceiver.ensureChannel(context)
     }
 
     Scaffold { padding ->
@@ -157,6 +180,35 @@ private fun VoiceCatcherApp() {
                 Text("Voice Catcher", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
                 Text("Say it once. Keep your day clear.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 TextButton(onClick = { AlarmService.stop(context) }) { Text("Stop a ringing alarm") }
+            }
+            item {
+                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
+                    Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("Alarm safety check", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        when {
+                            !ReminderSetup.notificationsAllowed(context) -> {
+                                Text("Notifications are disabled. P1 alarms must not be armed until alerts are allowed.")
+                                Button(onClick = { notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS) }) { Text("Enable notifications") }
+                            }
+                            !ReminderSetup.exactAlarmsAllowed(context) -> {
+                                Text("Exact alarms are disabled. P1 cannot ring at the requested time yet.")
+                                Button(onClick = { context.startActivity(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)) }) { Text("Allow exact alarms") }
+                            }
+                            !ReminderSetup.fullScreenAlarmsAllowed(context) -> {
+                                Text("Full-screen alarm controls are disabled. The notification will still show, but unlock may be required.")
+                                Button(onClick = {
+                                    context.startActivity(Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT).setData(Uri.parse("package:${context.packageName}")))
+                                }) { Text("Allow full-screen alarms") }
+                            }
+                            else -> Text("P1 alarm alerts, stop, and snooze controls are ready.")
+                        }
+                        TextButton(onClick = {
+                            context.startActivity(Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)
+                                .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName)
+                                .putExtra(android.provider.Settings.EXTRA_CHANNEL_ID, AlarmService.CHANNEL_ID))
+                        }) { Text("Check P1 alarm notification settings") }
+                    }
+                }
             }
             item {
                 Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
@@ -189,11 +241,27 @@ private fun VoiceCatcherApp() {
                 Spacer(Modifier.height(8.dp))
                 Button(onClick = {
                     if (typedTask.isNotBlank()) {
-                        addTask(Task(title = typedTask.trim(), priority = ReminderPriority.P2))
-                        voiceStatus = "Added to your to-do list: ${typedTask.trim()}."
+                        val interval = repeatMinutesText.toIntOrNull()?.takeIf { it in 1..(24 * 60) }
+                        val result = addTask(Task(
+                            title = typedTask.trim(),
+                            priority = ReminderPriority.P2,
+                            dueAt = interval?.let { LocalDateTime.now().plusMinutes(it.toLong()) },
+                            repeatMinutes = interval,
+                        ))
+                        voiceStatus = if (interval == null) "Added to your to-do list: ${typedTask.trim()}." else "Reminder repeats every $interval minutes until done."
+                        if (result == ReminderScheduler.Result.NOTIFICATIONS_DISABLED) reminderSetupMessage = "Enable notifications for the repeating reminder."
                         typedTask = ""
+                        repeatMinutesText = ""
                     }
                 }) { Text("Add task") }
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = repeatMinutesText,
+                    onValueChange = { repeatMinutesText = it.filter { char -> char.isDigit() } },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Repeat every N minutes (optional)") },
+                    singleLine = true,
+                )
             }
             item {
                 OutlinedTextField(
@@ -205,14 +273,46 @@ private fun VoiceCatcherApp() {
                 )
             }
             val matches = captures.filter { capture ->
-                searchQuery.isBlank() || capture.transcript.contains(searchQuery, ignoreCase = true) ||
+                val query = searchQuery.trim()
+                query.isBlank() || capture.transcript.contains(query, ignoreCase = true) ||
                     capture.outcome.contains(searchQuery, ignoreCase = true) ||
-                    capture.capturedAt.format(DateTimeFormatter.ofPattern("dd MMM yyyy h:mm a")).contains(searchQuery, ignoreCase = true)
+                    capture.capturedAt.format(DateTimeFormatter.ofPattern("dd MMM yyyy h:mm a")).contains(query, ignoreCase = true) ||
+                    capture.location?.placeLabel?.contains(query, ignoreCase = true) == true ||
+                    capture.location?.let { "${it.latitude}, ${it.longitude}".contains(query, ignoreCase = true) } == true ||
+                    (query.equals("today", ignoreCase = true) && capture.capturedAt.toLocalDate() == java.time.LocalDate.now()) ||
+                    (query.equals("yesterday", ignoreCase = true) && capture.capturedAt.toLocalDate() == java.time.LocalDate.now().minusDays(1))
             }
             if (searchQuery.isNotBlank()) {
                 item { Text("Voice history", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold) }
                 if (matches.isEmpty()) item { Text("No matching captured voice notes.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 items(matches, key = { it.id }) { capture -> CaptureHistoryCard(capture) }
+            } else if (captures.isNotEmpty()) {
+                item { Text("Recent voice history", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold) }
+                items(captures.take(5), key = { it.id }) { capture -> CaptureHistoryCard(capture) }
+            }
+            reminderSetupMessage?.let { message -> item { Text(message, color = MaterialTheme.colorScheme.error) } }
+            item {
+                Card {
+                    Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("Your privacy", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        Text("Transcripts and saved locations are encrypted on this phone. Device backup is disabled. Location is optional and is used only when you record a voice capture.")
+                        if (eraseConfirmationNeeded) {
+                            Text("This permanently erases all tasks and voice history from this phone.", color = MaterialTheme.colorScheme.error)
+                            Button(onClick = {
+                                tasks.forEach { ReminderScheduler.cancel(context, it) }
+                                tasks.clear()
+                                captures.clear()
+                                store.clearTasks()
+                                store.clearCaptures()
+                                eraseConfirmationNeeded = false
+                                voiceStatus = "All saved tasks and voice history were erased."
+                            }) { Text("Confirm erase all data") }
+                            TextButton(onClick = { eraseConfirmationNeeded = false }) { Text("Cancel") }
+                        } else {
+                            TextButton(onClick = { eraseConfirmationNeeded = true }) { Text("Erase all saved data") }
+                        }
+                    }
+                }
             }
             item {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -237,12 +337,6 @@ private fun VoiceCatcherApp() {
                         persist()
                     },
                 )
-            }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                item { TextButton(onClick = { notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS) }) { Text("Enable reminder notifications") } }
-            }
-            if (exactAlarmNeeded) {
-                item { TextButton(onClick = { context.startActivity(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)) }) { Text("Allow exact alarms so your P1 reminder can ring") } }
             }
         }
     }
@@ -278,7 +372,8 @@ private fun CaptureHistoryCard(capture: CaptureRecord) {
             Text(capture.capturedAt.format(DateTimeFormatter.ofPattern("dd MMM yyyy, h:mm a")), color = MaterialTheme.colorScheme.onSurfaceVariant)
             capture.location?.let { location ->
                 Text(
-                    "Location: %.5f, %.5f%s".format(
+                    "Location: %s · %.5f, %.5f%s".format(
+                        location.placeLabel ?: "Unlabelled place",
                         location.latitude,
                         location.longitude,
                         location.accuracyMeters?.let { " · ±${it.toInt()} m" }.orEmpty(),
