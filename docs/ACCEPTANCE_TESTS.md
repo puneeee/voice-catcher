@@ -2,7 +2,7 @@
 
 Use a disposable test installation or update with the original signing key. Do not uninstall a populated installation to bypass a signature mismatch. Start with notifications, exact alarms and the P1 notification channel enabled.
 
-1. **Relative time / urgent:** Speak or type “remind me to check the oven after two minutes urgent.” Check that the saved card says P1 and has a due time two minutes later. Repeat with “in 5 minutes” and “in one hour.” Lock the phone and confirm the short P1 rings at the expected time.
+1. **Relative time / urgent:** Speak, or tap Type instead and type “remind me to check the oven after two minutes urgent.” Check that the saved card says P1 and has a due time two minutes later. Repeat with “in 5 minutes” and “in one hour.” Lock the phone and confirm the short P1 rings at the expected time.
 2. **Separate pages:** Switch Home → Plan → Search → History → Settings. Each page should show only its own content. Rotate the phone and check the selected page/filter survives. Notification settings belong on Settings; capture history belongs under History → Captures.
 3. **Planning:** On Plan, choose tomorrow and add Work / P2 / no alert. It should appear only under tomorrow's Work category. Edit it to today and Health; check the category counts and Home update. Configure morning/evening times in Settings; confirm tapping a daily notification opens Plan.
 4. **Editing:** Create a P1 for three minutes from now. Edit its name, category and time to five minutes from now. Check only the new time rings. Switch to P2 and confirm it uses a notification. Test P2 repeat-gap edits. Open task count must not increase when editing.

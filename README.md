@@ -24,7 +24,7 @@ An Android app for voice reminders and an organized daily plan. Kotlin and Jetpa
 
 ## Create reminders
 
-Tap **Start speaking**, then **Finish speaking** when ready, or type the same command on Home and tap **Use command**.
+Tap **Start speaking**, then **Finish speaking** when ready, or tap **Type instead** on Home, enter the command and tap **Use command**.
 
 - “Remind me to stretch in 5 minutes urgent” → P1 alarm five minutes from capture time.
 - “Remind me after two minutes to check the oven” → P1 alarm two minutes later.
@@ -41,7 +41,7 @@ The app reports whether an alert was scheduled. If it says **Saved, but no alert
 
 ## Organize your daily plan
 
-1. Open **Plan** and select **Today**, **Tomorrow**, or **Choose date**.
+1. Open **Plan** and select **Today**, **Tomorrow**, or **Date…**.
 2. Tap **Add to [date]**. Enter the task name and choose **Work**, **Personal**, **Health**, **Errands**, **Learning**, or **Other**.
 3. Choose **P2 · Routine** for an ordinary task. Leave **Alert me at a time** off for a checklist item, or enable it and choose an alert time. Choose **P1 · Urgent** for an exact-time alarm.
 4. Tap **Save task**. The task appears under its category for that date. Use category chips to filter the plan.

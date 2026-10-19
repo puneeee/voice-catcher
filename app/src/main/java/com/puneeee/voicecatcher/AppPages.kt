@@ -6,6 +6,8 @@ import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -27,27 +29,27 @@ import java.time.format.DateTimeFormatter
 fun HomePage(tasks: List<Task>, voiceStatus: String, speaking: Boolean, onSpeak: () -> Unit,
              onCommand: (String) -> Unit, onNew: () -> Unit, actions: TaskUiActions, onSettings: () -> Unit) {
     var command by rememberSaveable { mutableStateOf("") }
+    var showCommand by rememberSaveable { mutableStateOf(false) }
     val today = LocalDate.now()
     val open = TaskQueries.forDay(tasks, today, includeOverdue = true)
     LazyColumn(contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        item { PageHeading("Make room for today.", today.format(DateTimeFormatter.ofPattern("EEEE, dd MMMM"))) }
+        item { PageHeading("Today", today.format(DateTimeFormatter.ofPattern("EEEE, dd MMMM"))) }
         item {
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
                 Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("SAY IT. WE'LL KEEP TRACK.", style = MaterialTheme.typography.labelMedium)
                     Text(voiceStatus, style = MaterialTheme.typography.bodyLarge)
                     Button(onClick = onSpeak, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) {
                         Icon(if (speaking) Icons.Outlined.Stop else Icons.Outlined.Mic, null)
                         Spacer(Modifier.width(8.dp)); Text(if (speaking) "Finish speaking" else "Start speaking")
                     }
-                    Text("Try: ‘remind me to stretch in 5 minutes urgent’. You can pause or finish manually.", style = MaterialTheme.typography.bodySmall)
                 }
             }
         }
         item {
-            OutlinedTextField(command, { command = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Or type a command") }, maxLines = 3)
+            if (showCommand) OutlinedTextField(command, { command = it }, modifier = Modifier.fillMaxWidth(), label = { Text("Type a command") }, maxLines = 3)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = { if (command.isNotBlank()) { onCommand(command); command = "" } }, enabled = command.isNotBlank()) { Text("Use command") }
+                if (showCommand) TextButton(onClick = { if (command.isNotBlank()) { onCommand(command); command = "" } }, enabled = command.isNotBlank()) { Text("Use command") }
+                else TextButton(onClick = { showCommand = true }) { Text("Type instead") }
                 FilledTonalButton(onClick = onNew) { Icon(Icons.Outlined.Add, null); Text("Add task") }
             }
         }
@@ -69,6 +71,7 @@ fun PlanPage(tasks: List<Task>, actions: TaskUiActions, onNew: (LocalDate) -> Un
     val context = LocalContext.current
     var dayText by rememberSaveable { mutableStateOf(LocalDate.now().toString()) }
     var categoryName by rememberSaveable { mutableStateOf("ALL") }
+    var showGuide by rememberSaveable { mutableStateOf(false) }
     val day = LocalDate.parse(dayText)
     val planned = TaskQueries.forDay(tasks, day)
     val selected = planned.filter { categoryName == "ALL" || it.category.name == categoryName }
@@ -78,21 +81,21 @@ fun PlanPage(tasks: List<Task>, actions: TaskUiActions, onNew: (LocalDate) -> Un
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(day == LocalDate.now(), { dayText = LocalDate.now().toString() }, label = { Text("Today") })
                 FilterChip(day == LocalDate.now().plusDays(1), { dayText = LocalDate.now().plusDays(1).toString() }, label = { Text("Tomorrow") })
-                OutlinedButton(onClick = { DatePickerDialog(context, { _, y, m, d -> dayText = LocalDate.of(y, m + 1, d).toString() }, day.year, day.monthValue - 1, day.dayOfMonth).show() }) { Text("Choose date") }
+                OutlinedButton(onClick = { DatePickerDialog(context, { _, y, m, d -> dayText = LocalDate.of(y, m + 1, d).toString() }, day.year, day.monthValue - 1, day.dayOfMonth).show() }) { Text("Date…") }
             }
             Text(day.format(DateTimeFormatter.ofPattern("EEEE, dd MMMM yyyy")), style = MaterialTheme.typography.titleMedium)
         }
         item {
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
                 Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("How to organize your day", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    Text("1. Add a task for this date.\n2. Choose Work, Personal, Health or another category.\n3. Add a time and P1/P2 if you need an alert.\n4. Tap Done when finished; it moves to Completed.")
+                    TextButton(onClick = { showGuide = !showGuide }) { Text("How to organize your day") }
+                    if (showGuide) Text("1. Add a task for this date.\n2. Choose Work, Personal, Health or another category.\n3. Add a time and P1/P2 if you need an alert.\n4. Tap Done when finished; it moves to Completed.")
                     Button(onClick = { onNew(day) }) { Text("Add to ${day.format(DateTimeFormatter.ofPattern("dd MMM"))}") }
-                    TextButton(onClick = onSettings) { Text("Set morning plan & evening review times") }
+                    if (showGuide) TextButton(onClick = onSettings) { Text("Set morning plan & evening review times") }
                 }
             }
         }
-        item { FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        item { Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             FilterChip(categoryName == "ALL", { categoryName = "ALL" }, label = { Text("All · ${planned.size}") })
             TaskCategory.entries.forEach { category -> FilterChip(categoryName == category.name, { categoryName = category.name },
                 label = { Text("${category.label} · ${planned.count { it.category == category }}") }) }
