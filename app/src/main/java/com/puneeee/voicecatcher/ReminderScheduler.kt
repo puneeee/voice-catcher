@@ -14,6 +14,10 @@ object ReminderScheduler {
     fun schedule(context: Context, task: Task): Result {
         if (task.dueAt == null || task.status == TaskStatus.DONE) return Result.NOT_REQUIRED
         if (!ReminderSetup.notificationsAllowed(context)) return Result.NOTIFICATIONS_DISABLED
+        if (task.priority == ReminderPriority.P1) AlarmService.ensureChannel(context) else ReminderReceiver.ensureChannel(context)
+        val channelId = if (task.priority == ReminderPriority.P1) AlarmService.CHANNEL_ID else ReminderReceiver.P2_CHANNEL_ID
+        val notifications = context.getSystemService(android.app.NotificationManager::class.java)
+        if (notifications.getNotificationChannel(channelId)?.importance == android.app.NotificationManager.IMPORTANCE_NONE) return Result.NOTIFICATIONS_DISABLED
         val alarmManager = context.getSystemService(AlarmManager::class.java)
         val triggerAtMillis = task.dueAt.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
         if (triggerAtMillis <= System.currentTimeMillis()) return Result.PAST_DUE

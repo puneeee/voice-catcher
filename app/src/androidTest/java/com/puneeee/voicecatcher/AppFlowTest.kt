@@ -125,6 +125,7 @@ class AppFlowTest {
         compose.onNodeWithTag("save-task").performClick()
         compose.onNodeWithTag("task-error").assertIsDisplayed()
         org.junit.Assert.assertEquals(1, TaskStore(compose.activity).load().size)
+        screenshot("validation-alert-on")
     }
 
     @Test fun futureP2TaskCanBeFoundAndEditedFromHomeFilter() {
@@ -139,11 +140,13 @@ class AppFlowTest {
     @Test fun themeSelectionPersistsAcrossActivityRecreation() {
         compose.onNodeWithText("Settings").performClick()
         compose.onNodeWithText("Dark", useUnmergedTree = false).performClick().assertIsSelected()
+        screenshot("theme-dark")
         org.junit.Assert.assertEquals(ThemeChoice.DARK, AppearancePreferences.theme(compose.activity))
         compose.activityRule.scenario.recreate()
         compose.waitForIdle()
         compose.onNodeWithText("Dark", useUnmergedTree = false).assertIsSelected()
         compose.onNodeWithText("Light", useUnmergedTree = false).performClick().assertIsSelected()
+        screenshot("theme-light")
         org.junit.Assert.assertEquals(ThemeChoice.LIGHT, AppearancePreferences.theme(compose.activity))
         compose.onNodeWithText("System", useUnmergedTree = false).performClick()
     }
@@ -158,5 +161,19 @@ class AppFlowTest {
             ReminderReceiver().onReceive(compose.activity, android.content.Intent().setAction(ReminderReceiver.ACTION_DONE).putExtra(ReminderReceiver.EXTRA_TASK_ID, due.id))
             org.junit.Assert.assertEquals(TaskStatus.DONE, TaskStore(compose.activity).load().single { it.id == due.id }.status)
         }
+    }
+
+    @Test fun manualTimedTaskSavesAndSuggestsHealthCategory() {
+        compose.onNodeWithText("Add task").performClick()
+        compose.onNodeWithTag("task-name").performTextReplacement("take a bath")
+        compose.onNodeWithTag("task-name").performImeAction()
+        compose.onNode(hasScrollAction()).performScrollToNode(hasTestTag("alert-toggle"))
+        compose.onNodeWithTag("alert-toggle").performClick()
+        compose.onNodeWithTag("save-task").performClick()
+        compose.waitForIdle()
+        val task = TaskStore(compose.activity).load().single { it.title == "take a bath" }
+        org.junit.Assert.assertEquals(TaskCategory.HEALTH, task.category)
+        org.junit.Assert.assertEquals(ReminderPriority.P2, task.priority)
+        org.junit.Assert.assertNotNull(task.dueAt)
     }
 }
