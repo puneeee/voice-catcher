@@ -2,6 +2,8 @@
 
 ## Vision
 
+Current shipped behavior and examples are documented in [Reminders, categories and appearance](REMINDERS_AND_CATEGORIES.md). Routine timed requests default to P2 notifications; urgency words or explicit alarm requests select P1. Appearance, live task edits and explainable local category suggestions are implemented; cloud AI remains a future capability.
+
 Voice Catcher is a private Android companion for people who think faster than they can organize. A person speaks naturally—"remind me at 5 to have lunch", "add milk and coffee", or "I finished the report"—and the assistant captures, understands, and follows through without becoming noisy or judgmental.
 
 The Android app is the complete command center. It uses on-device alarms and notifications, with no dependency on WhatsApp or a cloud messaging account.

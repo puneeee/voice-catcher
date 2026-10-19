@@ -45,6 +45,7 @@ class ReminderReceiver : BroadcastReceiver() {
 
     private fun showRepeatingNotification(context: Context, task: Task) {
         ensureChannel(context)
+        if (!ReminderSetup.notificationsAllowed(context)) return
         val doneIntent = PendingIntent.getBroadcast(
             context,
             task.id.hashCode(),
@@ -55,8 +56,9 @@ class ReminderReceiver : BroadcastReceiver() {
         )
         val notification = NotificationCompat.Builder(context, P2_CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setContentTitle("Still pending")
+            .setContentTitle("P2 reminder · ${task.title}")
             .setContentText(task.title)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(task.title))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setOngoing(true)
             .setContentIntent(PendingIntent.getActivity(context, task.id.hashCode(),

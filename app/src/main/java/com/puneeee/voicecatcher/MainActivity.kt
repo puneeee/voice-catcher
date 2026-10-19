@@ -33,6 +33,7 @@ class MainActivity : ComponentActivity() {
     private var page by mutableStateOf(AppPage.HOME)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        CategorySuggestions.migrateExisting(this)
         page = runCatching { AppPage.valueOf(savedInstanceState?.getString("page") ?: intent.getStringExtra(EXTRA_PAGE).orEmpty()) }.getOrDefault(AppPage.HOME)
         setContent { VoiceTheme { VoiceCatcherApp(page) { page = it } } }
     }
@@ -47,7 +48,16 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun VoiceTheme(content: @Composable () -> Unit) {
-    val colors = if (isSystemInDarkTheme()) darkColorScheme(primary = Color(0xFFADC6FF), tertiary = Color(0xFF8FD5B5))
+    val context = LocalContext.current
+    var choice by remember { mutableStateOf(AppearancePreferences.theme(context)) }
+    DisposableEffect(context) {
+        val prefs = context.getSharedPreferences("appearance", android.content.Context.MODE_PRIVATE)
+        val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, _ -> choice = AppearancePreferences.theme(context) }
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+        onDispose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
+    val dark = choice == ThemeChoice.DARK || (choice == ThemeChoice.SYSTEM && isSystemInDarkTheme())
+    val colors = if (dark) darkColorScheme(primary = Color(0xFFADC6FF), tertiary = Color(0xFF8FD5B5))
     else lightColorScheme(primary = Color(0xFF3859D6), secondary = Color(0xFF52617E), tertiary = Color(0xFF167258),
         background = Color(0xFFF5F7FC), surface = Color.White, surfaceVariant = Color(0xFFE8EDF7))
     MaterialTheme(colorScheme = colors, content = content)
@@ -63,7 +73,7 @@ private fun VoiceCatcherApp(page: AppPage, onPage: (AppPage) -> Unit) {
     var accessRevision by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
     val snackbars = remember { SnackbarHostState() }
-    var voiceStatus by rememberSaveable { mutableStateOf("Say a task, a time, or ‘in 5 minutes’. Add ‘urgent’ for P1.") }
+    var voiceStatus by rememberSaveable { mutableStateOf("Routine reminders use P2 notifications. Say ‘urgent’ or ‘P1’ for a ringing alarm.") }
     var isSpeaking by remember { mutableStateOf(false) }
     var showEditor by rememberSaveable { mutableStateOf(false) }
     var editId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -86,7 +96,8 @@ private fun VoiceCatcherApp(page: AppPage, onPage: (AppPage) -> Unit) {
             val result = when (val action = VoiceCommandParser.parse(transcript, capturedAt)) {
                 is VoiceAction.CreateTask -> {
                     val task = Task(title = action.title, priority = action.priority, dueAt = action.dueAt,
-                        repeatMinutes = action.repeatMinutes, plannedFor = action.dueAt?.toLocalDate() ?: capturedAt.toLocalDate())
+                        repeatMinutes = action.repeatMinutes, plannedFor = action.dueAt?.toLocalDate() ?: capturedAt.toLocalDate(),
+                        category = CategorySuggestions.suggest(action.title))
                     val status = TaskOperations.save(context, task)
                     if (status == ReminderScheduler.Result.SCHEDULED)
                         "${action.priority} ${if (action.priority == ReminderPriority.P1) "alarm" else "reminder"} set: ${action.title} · ${action.dueAt?.format(DateTimeFormatter.ofPattern("EEE, h:mm a"))}."

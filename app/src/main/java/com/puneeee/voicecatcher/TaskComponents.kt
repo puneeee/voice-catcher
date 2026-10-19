@@ -109,11 +109,15 @@ fun TaskEditorDialog(original: Task?, defaultDay: LocalDate, onDismiss: () -> Un
     var time by rememberSaveable { mutableStateOf((original?.dueAt?.toLocalTime() ?: LocalTime.now().plusMinutes(10).withSecond(0).withNano(0)).toString()) }
     var timed by rememberSaveable { mutableStateOf(original?.dueAt != null || original?.priority == ReminderPriority.P1) }
     var repeat by rememberSaveable { mutableStateOf(original?.repeatMinutes?.toString().orEmpty()) }
+    var categoryChosen by rememberSaveable { mutableStateOf(original != null) }
     var error by remember { mutableStateOf<String?>(null) }
     AlertDialog(onDismissRequest = onDismiss, title = { Text(if (original == null) "Add to your plan" else "Edit task") },
         text = {
             Column(Modifier.fillMaxWidth().heightIn(max = 520.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedTextField(title, { title = it }, label = { Text("Task name") }, modifier = Modifier.fillMaxWidth(), maxLines = 3,
+                OutlinedTextField(title, { title = it; if (!categoryChosen) category = CategorySuggestions.suggest(it).name },
+                    label = { Text("Task name") }, modifier = Modifier.fillMaxWidth().testTag("task-name"), maxLines = 3,
+                    isError = error != null && (title.isBlank() || title.length > 300),
+                    supportingText = { Text("${title.length}/300 · A task name is required") },
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { keyboard?.hide() }))
                 Text("Priority", style = MaterialTheme.typography.labelLarge)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -122,15 +126,16 @@ fun TaskEditorDialog(original: Task?, defaultDay: LocalDate, onDismiss: () -> Un
                 }
                 Text("Category", style = MaterialTheme.typography.labelLarge)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    TaskCategory.entries.forEach { value -> FilterChip(selected = category == value.name, onClick = { category = value.name }, label = { Text(value.label) }) }
+                    TaskCategory.entries.forEach { value -> FilterChip(selected = category == value.name, onClick = { category = value.name; categoryChosen = true }, label = { Text(value.label) }) }
                 }
+                Text("Suggested from the task name; tap any category to override it. Bath or run → Health; app status → Work.", style = MaterialTheme.typography.bodySmall)
                 OutlinedButton(onClick = {
                     val selected = LocalDate.parse(date)
                     DatePickerDialog(context, { _, y, m, d -> date = LocalDate.of(y, m + 1, d).toString() }, selected.year, selected.monthValue - 1, selected.dayOfMonth).show()
                 }) { Text("Plan date · ${LocalDate.parse(date).format(DateTimeFormatter.ofPattern("EEE, dd MMM yyyy"))}") }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Alert me at a time", Modifier.weight(1f))
-                    Switch(checked = timed, onCheckedChange = { timed = it }, enabled = priority != "P1")
+                    Switch(checked = timed, onCheckedChange = { timed = it }, enabled = priority != "P1", modifier = Modifier.testTag("alert-toggle"))
                 }
                 if (timed) {
                     OutlinedButton(onClick = {
@@ -138,15 +143,20 @@ fun TaskEditorDialog(original: Task?, defaultDay: LocalDate, onDismiss: () -> Un
                         TimePickerDialog(context, { _, h, m -> time = LocalTime.of(h, m).toString() }, selected.hour, selected.minute, DateFormat.is24HourFormat(context)).show()
                     }) { Text("Alert time · ${LocalTime.parse(time).format(DateTimeFormatter.ofPattern("h:mm a"))}") }
                     Text("The alert uses the plan date above.", style = MaterialTheme.typography.bodySmall)
+                    Text(if (priority == "P2") "P2 sends a notification. Without a repeat gap, it alerts once." else "P1 rings as an alarm.", style = MaterialTheme.typography.bodySmall)
                     if (priority == "P2") OutlinedTextField(repeat, { repeat = it }, label = { Text("Repeat gap in minutes (optional)") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true, modifier = Modifier.fillMaxWidth())
                 }
                 if (priority == "P1") Text("P1 rings once at the exact time. Enable notifications and exact alarms in Settings.", style = MaterialTheme.typography.bodySmall)
-                error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
-        }, confirmButton = { Button(onClick = {
+        }, confirmButton = { Column {
+            error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.fillMaxWidth().testTag("task-error"),
+                style = MaterialTheme.typography.bodySmall) }
+            Button(onClick = {
+            keyboard?.hide()
             try {
-                require(title.isNotBlank() && title.length <= 300) { "Enter a task name of 1–300 characters." }
+                require(title.isNotBlank()) { "Enter a task name before saving." }
+                require(title.length <= 300) { "Shorten the task name to 300 characters or fewer." }
                 val due = if (timed) LocalDate.parse(date).atTime(LocalTime.parse(time)) else null
                 require(due == null || due == original?.dueAt || due.isAfter(LocalDateTime.now())) { "Choose a future alert date and time." }
                 val interval = if (timed && repeat.isNotBlank() && priority == "P2") repeat.trim().toIntOrNull()
@@ -156,7 +166,7 @@ fun TaskEditorDialog(original: Task?, defaultDay: LocalDate, onDismiss: () -> Un
                 error = onSave(updated)
                 if (error == null) onDismiss()
             } catch (invalid: IllegalArgumentException) { error = invalid.message }
-        }) { Text("Save task") } }, dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } })
+        }, modifier = Modifier.testTag("save-task")) { Text("Save task") } } }, dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } })
 }
 
 @OptIn(ExperimentalLayoutApi::class)

@@ -51,6 +51,7 @@ class AppFlowTest {
         screenshot("plan")
         compose.onNodeWithText("Settings", useUnmergedTree = false).performClick()
         compose.onNodeWithText("Make it yours").assertIsDisplayed()
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("Notifications & P1 alarms"))
         compose.onNodeWithText("Notifications & P1 alarms").assertExists()
         screenshot("settings")
         compose.onNodeWithText("How to organize your day").assertDoesNotExist()
@@ -113,5 +114,49 @@ class AppFlowTest {
         taskVisible()
         compose.onNodeWithText("Updated task").assertExists()
         compose.onNodeWithText(sample.title).assertDoesNotExist()
+    }
+
+    @Test fun validationIsVisibleWithAlertToggleOnOrOff() {
+        compose.onNodeWithText("Add task").performClick()
+        compose.onNodeWithTag("save-task").performClick()
+        compose.onNodeWithTag("task-error").assertIsDisplayed()
+        compose.onNode(hasScrollAction()).performScrollToNode(hasTestTag("alert-toggle"))
+        compose.onNodeWithTag("alert-toggle").performClick()
+        compose.onNodeWithTag("save-task").performClick()
+        compose.onNodeWithTag("task-error").assertIsDisplayed()
+        org.junit.Assert.assertEquals(1, TaskStore(compose.activity).load().size)
+    }
+
+    @Test fun futureP2TaskCanBeFoundAndEditedFromHomeFilter() {
+        val future = sample.copy(id = "future-p2", title = "Tomorrow routine", plannedFor = java.time.LocalDate.now().plusDays(1))
+        compose.runOnIdle { TaskStore(compose.activity).upsert(future) }
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText("P2 notifications"))
+        compose.onNodeWithText("P2 notifications").performScrollTo().performClick()
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasTestTag("task-future-p2"))
+        compose.onNodeWithText("Tomorrow routine").assertExists()
+    }
+
+    @Test fun themeSelectionPersistsAcrossActivityRecreation() {
+        compose.onNodeWithText("Settings").performClick()
+        compose.onNodeWithText("Dark", useUnmergedTree = false).performClick().assertIsSelected()
+        org.junit.Assert.assertEquals(ThemeChoice.DARK, AppearancePreferences.theme(compose.activity))
+        compose.activityRule.scenario.recreate()
+        compose.waitForIdle()
+        compose.onNodeWithText("Dark", useUnmergedTree = false).assertIsSelected()
+        compose.onNodeWithText("Light", useUnmergedTree = false).performClick().assertIsSelected()
+        org.junit.Assert.assertEquals(ThemeChoice.LIGHT, AppearancePreferences.theme(compose.activity))
+        compose.onNodeWithText("System", useUnmergedTree = false).performClick()
+    }
+
+    @Test fun p2DeliveryPostsNotificationAndDoneCompletesTask() {
+        val due = sample.copy(id = "p2-delivery", dueAt = LocalDateTime.now().minusSeconds(1))
+        compose.runOnIdle {
+            TaskStore(compose.activity).upsert(due)
+            ReminderReceiver().onReceive(compose.activity, android.content.Intent().putExtra(ReminderReceiver.EXTRA_TASK_ID, due.id))
+            val active = compose.activity.getSystemService(android.app.NotificationManager::class.java).activeNotifications
+            org.junit.Assert.assertTrue(active.any { it.id == due.id.hashCode() })
+            ReminderReceiver().onReceive(compose.activity, android.content.Intent().setAction(ReminderReceiver.ACTION_DONE).putExtra(ReminderReceiver.EXTRA_TASK_ID, due.id))
+            org.junit.Assert.assertEquals(TaskStatus.DONE, TaskStore(compose.activity).load().single { it.id == due.id }.status)
+        }
     }
 }

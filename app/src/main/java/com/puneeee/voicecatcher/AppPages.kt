@@ -30,10 +30,17 @@ fun HomePage(tasks: List<Task>, voiceStatus: String, speaking: Boolean, onSpeak:
              onCommand: (String) -> Unit, onNew: () -> Unit, actions: TaskUiActions, onSettings: () -> Unit) {
     var command by rememberSaveable { mutableStateOf("") }
     var showCommand by rememberSaveable { mutableStateOf(false) }
+    var taskFilter by rememberSaveable { mutableStateOf("Today") }
     val today = LocalDate.now()
-    val open = TaskQueries.forDay(tasks, today, includeOverdue = true)
+    val allOpen = tasks.filter { it.status == TaskStatus.OPEN }.sortedBy { it.dueAt ?: java.time.LocalDateTime.MAX }
+    val open = when (taskFilter) {
+        "All" -> allOpen
+        "P1 alarms" -> allOpen.filter { it.priority == ReminderPriority.P1 }
+        "P2 notifications" -> allOpen.filter { it.priority == ReminderPriority.P2 }
+        else -> TaskQueries.forDay(tasks, today, includeOverdue = true)
+    }
     LazyColumn(contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        item { PageHeading("Today", today.format(DateTimeFormatter.ofPattern("EEEE, dd MMMM"))) }
+        item { PageHeading("Your tasks", today.format(DateTimeFormatter.ofPattern("EEEE, dd MMMM"))) }
         item {
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
                 Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -55,12 +62,20 @@ fun HomePage(tasks: List<Task>, voiceStatus: String, speaking: Boolean, onSpeak:
         }
         item {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                Column { Text("Today", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Column { Text(taskFilter, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                     Text("${open.size} open · ${open.count { it.priority == ReminderPriority.P1 }} urgent", color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 TextButton(onClick = onSettings) { Text("Alert settings") }
             }
         }
-        if (open.isEmpty()) item { EmptyCard("You're clear for today", "Add a task or speak a reminder. Finished work lives in History → Completed.") }
+        item {
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf("Today", "All", "P1 alarms", "P2 notifications").forEach { filter ->
+                    FilterChip(taskFilter == filter, { taskFilter = filter }, label = { Text(filter) })
+                }
+            }
+            Text("All, P1 and P2 include future dates. Edit a task to change its alert time.", style = MaterialTheme.typography.bodySmall)
+        }
+        if (open.isEmpty()) item { EmptyCard("No open tasks in this view", "Try All to include future tasks, or add a task. Finished work lives in History → Completed.") }
         items(open, key = { it.id }) { TaskCard(it, actions) }
     }
 }
@@ -178,10 +193,35 @@ fun SettingsPage(accessRevision: Int, onRequestNotifications: () -> Unit, onLoca
     var dailyEnabled by remember { mutableStateOf(dailyTimes != null) }
     var snooze by rememberSaveable { mutableStateOf(ReminderPreferences.snoozeMinutes(context).toString()) }
     var confirmErase by remember { mutableStateOf(false) }
+    var themeChoice by remember { mutableStateOf(AppearancePreferences.theme(context)) }
     val access = remember(accessRevision) { Triple(ReminderSetup.notificationsAllowed(context), ReminderSetup.exactAlarmsAllowed(context), ReminderSetup.fullScreenAlarmsAllowed(context)) }
     fun open(intent: Intent) { runCatching { context.startActivity(intent) }.onFailure { onMessage("This phone could not open that setting. Use Android Settings → Apps → Voice Catcher.") } }
     LazyColumn(contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item { PageHeading("Make it yours", "Notification access, planning times, snooze and privacy.") }
+        item { SettingsCard("Appearance") {
+            Text("Choose a theme. System follows your phone; Light and Dark override it immediately.")
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                ThemeChoice.entries.forEach { choice ->
+                    FilterChip(themeChoice == choice, {
+                        themeChoice = choice
+                        AppearancePreferences.setTheme(context, choice)
+                    }, label = { Text(choice.label) })
+                }
+            }
+        } }
+        item { SettingsCard("P1 words & P2 reminders") {
+            Text("P1 rings an alarm. These words choose P1 automatically:")
+            Text(VoiceCommandParser.priorityOneWords.joinToString(" · "), fontWeight = FontWeight.SemiBold)
+            Text("An explicit ‘alarm’ request also selects P1. Give a time or delay; without one we ask when.")
+            Text("Routine reminders use P2 notifications. Say ‘remind me to take a bath in 5 minutes’ for P2, or add ‘urgent’ for P1. Say ‘every 10 minutes’ to repeat a P2 until Done.")
+            Text("Find and edit P2 tasks under Home → P2 notifications, including future tasks. An untimed P2 is a to-do only: Edit → turn on Alert me at a time to schedule it.")
+            Text("P2 uses precise timing when Android allows exact alarms; otherwise Android may delay it to save battery.", style = MaterialTheme.typography.bodySmall)
+        } }
+        item { SettingsCard("Category suggestions") {
+            Text("Categories group tasks; they do not change alarm priority or alert timing.")
+            Text("Health: bath, run, meals, medicine\nWork: app status, project, meeting\nLearning: study, read, course\nErrands: shopping, groceries\nPersonal: family, calls, bills\nOther: no clear match")
+            Text("Suggestions are local keyword rules, not cloud AI. Voice tasks get a suggestion automatically. In the task editor, choose any category to override it.")
+        } }
         item { SettingsCard("Notifications & P1 alarms") {
             Text("Notifications: ${if (access.first) "Allowed" else "Off"}")
             OutlinedButton(onClick = onRequestNotifications) { Text(if (access.first) "Notification settings" else "Enable notifications") }
@@ -221,7 +261,7 @@ fun SettingsPage(accessRevision: Int, onRequestNotifications: () -> Unit, onLoca
             TextButton(onClick = onLocation) { Text("Allow location for future captures (optional)") }
             TextButton(onClick = { confirmErase = true }) { Text("Erase all saved data", color = MaterialTheme.colorScheme.error) }
         } }
-        item { Text("Voice Catcher · 0.2.0", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelMedium) }
+        item { Text("Voice Catcher · 0.3.0", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelMedium) }
     }
     if (confirmErase) AlertDialog(onDismissRequest = { confirmErase = false }, title = { Text("Erase saved data?") },
         text = { Text("This permanently removes tasks and capture history on this phone and cancels their reminders and daily briefs.") },

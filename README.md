@@ -1,6 +1,8 @@
 # Voice Catcher
 
-An Android app for voice reminders and an organized daily plan. Kotlin and Jetpack Compose; Android 8.0 or newer. Version 0.2.0 separates the app into five pages and adds task editing, custom snooze and live completion updates.
+An Android app for voice reminders and an organized daily plan. Kotlin and Jetpack Compose; Android 8.0 or newer. Version 0.3.0 adds saved Light/Dark/System themes, visible form errors, category suggestions, P2 task filters and routine notifications by default.
+
+Read the [reminder, category and appearance guide](docs/REMINDERS_AND_CATEGORIES.md) for examples and the complete P1 word list.
 
 ## Download and install
 
@@ -16,26 +18,26 @@ An Android app for voice reminders and an organized daily plan. Kotlin and Jetpa
 
 | Page | What it does |
 | --- | --- |
-| **Home** | Speak/type commands, add tasks, see today's open and overdue tasks. |
+| **Home** | Speak/type commands, add tasks, filter Today/All/P1/P2 including future reminders. |
 | **Plan** | Choose a day, add tasks, organize by category and filter the day's work. |
 | **Search** | Search task names, priorities, categories, saved captures, places and dates. |
 | **History** | Separate **Completed** tasks and **Captures** (voice/typed commands with their outcomes). |
-| **Settings** | Notification/alarm access, morning/evening planning times, default snooze and privacy. |
+| **Settings** | Theme, P1 trigger words, category help, notification/alarm access, daily times, snooze and privacy. |
 
 ## Create reminders
 
 Tap **Start speaking**, then **Finish speaking** when ready, or tap **Type instead** on Home, enter the command and tap **Use command**.
 
 - “Remind me to stretch in 5 minutes urgent” → P1 alarm five minutes from capture time.
-- “Remind me after two minutes to check the oven” → P1 alarm two minutes later.
-- “Remind me to call Alex in one hour” → P1 alarm one hour later.
+- “Remind me after two minutes to check the oven” → P2 notification two minutes later.
+- “Remind me to call Alex in one hour” → P2 notification one hour later.
 - “P2 remind me to check email in 15 minutes” → routine notification.
-- “Remind me to take medicine at 8:30 PM tomorrow” → timed P1 alarm.
+- “Urgent remind me to take medicine at 8:30 PM tomorrow” → timed P1 alarm.
 - “Remind me to drink water every twenty minutes” → P2 notifications repeating until Done.
 - “Add buy groceries” → untimed P2 task on today's plan.
 - “Mark buy groceries as done” → completes a matching open task. Ambiguous matches ask you to choose the task.
 
-Relative delays support numeric or common spoken quantities, seconds/minutes/hours, and combinations such as “in one hour and thirty minutes” (up to seven days). **Urgent**, **critical**, **emergency**, **ASAP** and **P1** select P1. P1 needs a time or delay; an urgent command without either asks for one. A timed reminder defaults to P1 unless you explicitly say P2. P1 alarms ring once; P2 may be a one-time notification or repeat every 1–1440 minutes.
+Relative delays support numeric or common spoken quantities, seconds/minutes/hours, and combinations such as “in one hour and thirty minutes” (up to seven days). **Urgent**, **critical**, **emergency**, **ASAP**, **immediately**, **P1**, **priority one** and **priority 1** select P1. An explicit **alarm** request also selects P1. P1 needs a time or delay; an urgent command without either asks for one. Routine timed reminders default to P2. P1 alarms ring once; P2 may be a one-time notification or repeat every 1–1440 minutes.
 
 The app reports whether an alert was scheduled. If it says **Saved, but no alert was armed**, enable the required access in Settings. Future reminders are re-armed when you return to the app or restart the phone. A missed past P1 alarm is not silently moved to a new time; edit or snooze it.
 
@@ -48,7 +50,7 @@ The app reports whether an alert was scheduled. If it says **Saved, but no alert
 5. To reorganize an existing task, tap **Edit** on Home, Plan or a Search result and change its date/category.
 6. Open **Settings → Daily planning notifications**, enter morning/evening times in 24-hour format, then tap **Save daily times**. Morning summarizes today's open priorities; evening summarizes today's completions and remaining work. Tapping the notification opens Plan. Daily summaries may arrive approximately because Android batches background notifications.
 
-Voice-created tasks start in **Other**; tap **Edit** to assign their category. Home includes overdue and older undated tasks so they are not lost; Plan shows tasks assigned to the selected date.
+Voice-created tasks receive local category suggestions: bath/run → Health, app status → Work, study → Learning, groceries → Errands. Unknown phrases use Other. Manual tasks suggest a category while you type until you choose one yourself. Tap **Edit** to override a suggestion. Home → All/P1/P2 includes future tasks; Plan shows tasks assigned to the selected date.
 
 ## Edit, finish and snooze
 
