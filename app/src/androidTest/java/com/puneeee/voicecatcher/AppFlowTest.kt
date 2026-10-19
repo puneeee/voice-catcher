@@ -101,7 +101,7 @@ class AppFlowTest {
     @Test fun editingUpdatesTheSameTaskAndCategory() {
         taskVisible()
         compose.onNodeWithText("Edit").performScrollTo().performClick()
-        compose.onNodeWithText("Task name").performTextReplacement("Updated task")
+        compose.onNodeWithText("Task name").performTextReplacement("Updated task").performImeAction()
         compose.onNodeWithText("Health", useUnmergedTree = false).performScrollTo().assertIsDisplayed().performClick().assertIsSelected()
         compose.onNodeWithText("Save task").performClick()
         compose.waitForIdle()

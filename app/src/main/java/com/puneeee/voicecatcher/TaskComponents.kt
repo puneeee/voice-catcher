@@ -7,15 +7,18 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import java.time.LocalDate
@@ -98,6 +101,7 @@ fun CaptureCard(capture: CaptureRecord) {
 @Composable
 fun TaskEditorDialog(original: Task?, defaultDay: LocalDate, onDismiss: () -> Unit, onSave: (Task) -> String?) {
     val context = LocalContext.current
+    val keyboard = LocalSoftwareKeyboardController.current
     var title by rememberSaveable { mutableStateOf(original?.title.orEmpty()) }
     var priority by rememberSaveable { mutableStateOf(original?.priority?.name ?: "P2") }
     var category by rememberSaveable { mutableStateOf(original?.category?.name ?: "GENERAL") }
@@ -109,7 +113,8 @@ fun TaskEditorDialog(original: Task?, defaultDay: LocalDate, onDismiss: () -> Un
     AlertDialog(onDismissRequest = onDismiss, title = { Text(if (original == null) "Add to your plan" else "Edit task") },
         text = {
             Column(Modifier.fillMaxWidth().heightIn(max = 520.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedTextField(title, { title = it }, label = { Text("Task name") }, modifier = Modifier.fillMaxWidth(), maxLines = 3)
+                OutlinedTextField(title, { title = it }, label = { Text("Task name") }, modifier = Modifier.fillMaxWidth(), maxLines = 3,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done), keyboardActions = KeyboardActions(onDone = { keyboard?.hide() }))
                 Text("Priority", style = MaterialTheme.typography.labelLarge)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     ReminderPriority.entries.forEach { value -> FilterChip(selected = priority == value.name,
