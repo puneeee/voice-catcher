@@ -65,7 +65,7 @@ jobs:
           disable-animations: true
           script: >
             bash -c 'result=0; gradle --no-daemon :app:connectedDebugAndroidTest || result=$?;
-            adb pull /sdcard/Android/data/com.puneeee.voicecatcher/files/screenshots/ app/build/ui-screenshots/ || true;
+            adb pull /sdcard/Pictures/VoiceCatcherScreenshots/ app/build/ui-screenshots/ || true;
             exit "$result"'
       - name: Publish test reports
         if: always()
