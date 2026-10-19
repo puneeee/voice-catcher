@@ -31,7 +31,9 @@ class AppFlowTest {
         compose.waitForIdle()
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val folder = File(context.getExternalFilesDir(null), "screenshots").apply { mkdirs() }
-        val bitmap = compose.onRoot().captureToImage().asAndroidBitmap()
+        // A modal dialog creates a second Compose root; capture the foreground root.
+        val roots = compose.onAllNodes(isRoot())
+        val bitmap = roots[roots.fetchSemanticsNodes().lastIndex].captureToImage().asAndroidBitmap()
         if (Build.VERSION.SDK_INT >= 29) {
             // Public test output survives the test runner uninstalling the app.
             val values = ContentValues().apply {
