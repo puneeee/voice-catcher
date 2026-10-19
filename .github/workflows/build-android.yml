@@ -59,9 +59,10 @@ jobs:
           arch: x86_64
           target: google_apis
           disable-animations: true
-          script: |
-            gradle --no-daemon :app:connectedDebugAndroidTest
-            adb pull /sdcard/Android/data/com.puneeee.voicecatcher/files/screenshots/ app/build/ui-screenshots/
+          script: >
+            bash -c 'result=0; gradle --no-daemon :app:connectedDebugAndroidTest || result=$?;
+            adb pull /sdcard/Android/data/com.puneeee.voicecatcher/files/screenshots/ app/build/ui-screenshots/ || true;
+            exit "$result"' 
       - name: Publish test reports
         if: always()
         uses: actions/upload-artifact@v4

@@ -91,7 +91,7 @@ class AppFlowTest {
         taskVisible()
         compose.onNodeWithText("Edit").performScrollTo().performClick()
         compose.onNodeWithText("Task name").performTextReplacement("Updated task")
-        compose.onNodeWithText("Health", useUnmergedTree = false).performClick()
+        compose.onNodeWithText("Health", useUnmergedTree = false).performScrollTo().assertIsDisplayed().performClick().assertIsSelected()
         compose.onNodeWithText("Save task").performClick()
         compose.waitForIdle()
         val saved = TaskStore(compose.activity).load()
