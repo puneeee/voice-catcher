@@ -37,6 +37,15 @@ object DailyBriefScheduler {
         }
     }
 
+    fun disable(context: Context) {
+        listOf(DailyBriefReceiver.ACTION_MORNING, DailyBriefReceiver.ACTION_EVENING).forEach { action ->
+            val pending = PendingIntent.getBroadcast(context, action.hashCode(), Intent(context, DailyBriefReceiver::class.java).setAction(action),
+                PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE)
+            if (pending != null) { context.getSystemService(AlarmManager::class.java).cancel(pending); pending.cancel() }
+        }
+        context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE).edit().clear().apply()
+    }
+
     private fun schedule(context: Context, action: String, time: LocalTime) {
         if (!ReminderSetup.notificationsAllowed(context)) return
         val now = LocalDateTime.now()

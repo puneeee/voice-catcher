@@ -14,13 +14,15 @@ class DailyBriefReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (!ReminderSetup.notificationsAllowed(context)) return
         ensureChannel(context)
-        val openTasks = TaskStore(context).load().filter { it.status == TaskStatus.OPEN }
+        val tasks = TaskStore(context).load()
+        val today = java.time.LocalDate.now()
+        val openTasks = TaskQueries.forDay(tasks, today, includeOverdue = true)
         val morning = intent.action == ACTION_MORNING
         val title = if (morning) "Good morning — your plan" else "Evening review"
         val taskPreview = openTasks.take(3).joinToString { it.title }.ifBlank { "No open tasks" }
-        val message = if (morning) "$taskPreview${if (openTasks.size > 3) " and ${openTasks.size - 3} more" else ""}" else "${openTasks.size} task(s) still open. Open Voice Catcher to mark progress or plan tomorrow."
+        val message = if (morning) "$taskPreview${if (openTasks.size > 3) " and ${openTasks.size - 3} more" else ""}" else "${tasks.count { it.status == TaskStatus.DONE && it.completedAt?.toLocalDate() == today }} completed today · ${openTasks.size} still open. Review your plan or move tasks to tomorrow."
         val openApp = PendingIntent.getActivity(
-            context, 0, context.packageManager.getLaunchIntentForPackage(context.packageName),
+            context, 0, Intent(context, MainActivity::class.java).putExtra(MainActivity.EXTRA_PAGE, "PLAN"),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         NotificationManagerCompat.from(context).notify(

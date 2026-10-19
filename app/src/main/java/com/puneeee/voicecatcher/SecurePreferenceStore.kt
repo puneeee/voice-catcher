@@ -29,11 +29,11 @@ class SecurePreferenceStore(context: Context) {
     fun write(key: String, value: String) {
         val encrypted = encrypt(value)
         val old = preferences.getString("$key.v2", null)
-        preferences.edit()
+        check(preferences.edit()
             .putString("$key.backup", old ?: encrypted)
             .putString("$key.v2", encrypted)
             .remove(key)
-            .apply()
+            .commit()) { "Could not save your data. Please free some storage and try again." }
     }
 
     fun clear(key: String) {

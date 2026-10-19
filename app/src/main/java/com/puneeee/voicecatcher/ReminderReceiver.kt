@@ -18,12 +18,12 @@ class ReminderReceiver : BroadcastReceiver() {
         val store = TaskStore(context)
         val task = store.load().firstOrNull { it.id == taskId } ?: return
         if (intent.action == ACTION_DONE) {
-            ReminderScheduler.cancel(context, task)
-            store.updateTask(task.copy(status = TaskStatus.DONE))
-            NotificationManagerCompat.from(context).cancel(task.id.hashCode())
+            TaskOperations.complete(context, task.id)
             return
         }
         if (task.status == TaskStatus.DONE) return
+        // Ignore a stale queued delivery after an edit or snooze moved this task into the future.
+        if (task.dueAt?.isAfter(LocalDateTime.now().plusSeconds(2)) == true) return
         if (task.priority == ReminderPriority.P1) {
             // A P1 is one-shot. Once it fires, never arm the same past alarm again.
             ReminderScheduler.cancel(context, task)
@@ -37,7 +37,7 @@ class ReminderReceiver : BroadcastReceiver() {
         }
         showRepeatingNotification(context, task)
         task.repeatMinutes?.let { interval ->
-            val updated = task.copy(dueAt = LocalDateTime.now().plusMinutes(interval.toLong()))
+            val updated = task.copy(dueAt = LocalDateTime.now().plusMinutes(interval.toLong()), snoozedAt = null)
             store.updateTask(updated)
             ReminderScheduler.schedule(context, updated)
         }
@@ -59,6 +59,9 @@ class ReminderReceiver : BroadcastReceiver() {
             .setContentText(task.title)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setOngoing(true)
+            .setContentIntent(PendingIntent.getActivity(context, task.id.hashCode(),
+                Intent(context, MainActivity::class.java).putExtra(MainActivity.EXTRA_PAGE, "HOME"),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
             .addAction(android.R.drawable.ic_menu_save, "Done", doneIntent)
             .build()
         NotificationManagerCompat.from(context).notify(task.id.hashCode(), notification)
@@ -68,7 +71,7 @@ class ReminderReceiver : BroadcastReceiver() {
         const val ACTION_DONE = "com.puneeee.voicecatcher.DONE"
         const val EXTRA_TITLE = "title"
         const val EXTRA_TASK_ID = "task_id"
-        private const val P2_CHANNEL_ID = "p2_reminders"
+        const val P2_CHANNEL_ID = "p2_reminders"
 
         fun ensureChannel(context: Context) {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return

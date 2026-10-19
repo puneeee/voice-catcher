@@ -5,6 +5,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.net.Uri
 import java.time.ZoneId
 
 object ReminderScheduler {
@@ -15,7 +16,7 @@ object ReminderScheduler {
         if (!ReminderSetup.notificationsAllowed(context)) return Result.NOTIFICATIONS_DISABLED
         val alarmManager = context.getSystemService(AlarmManager::class.java)
         val triggerAtMillis = task.dueAt.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
-        if (task.priority == ReminderPriority.P1 && triggerAtMillis <= System.currentTimeMillis()) return Result.PAST_DUE
+        if (triggerAtMillis <= System.currentTimeMillis()) return Result.PAST_DUE
         if (task.priority == ReminderPriority.P1 && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !alarmManager.canScheduleExactAlarms()) {
             return Result.EXACT_ALARMS_DISABLED
         }
@@ -30,14 +31,31 @@ object ReminderScheduler {
         return Result.SCHEDULED
     }
 
+    fun rearmOpen(context: Context) {
+        val store = TaskStore(context)
+        val now = java.time.LocalDateTime.now()
+        store.load().filter { it.status == TaskStatus.OPEN && it.dueAt != null }.forEach { task ->
+            val updated = if (task.priority == ReminderPriority.P2 && !task.dueAt!!.isAfter(now) && task.repeatMinutes != null)
+                task.copy(dueAt = now.plusMinutes(task.repeatMinutes.toLong())) else task
+            if (updated != task) store.updateTask(updated)
+            if (updated.dueAt!!.isAfter(now)) schedule(context, updated)
+        }
+    }
+
     fun cancel(context: Context, task: Task) {
-        context.getSystemService(AlarmManager::class.java).cancel(pendingIntent(context, task))
+        val manager = context.getSystemService(AlarmManager::class.java)
+        manager.cancel(pendingIntent(context, task))
+        // Cancel pre-upgrade identities too, so edits do not leave an old alarm behind.
+        val legacy = PendingIntent.getBroadcast(context, task.id.hashCode(), Intent(context, ReminderReceiver::class.java),
+            PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE)
+        if (legacy != null) { manager.cancel(legacy); legacy.cancel() }
     }
 
     private fun pendingIntent(context: Context, task: Task): PendingIntent = PendingIntent.getBroadcast(
         context,
-        task.id.hashCode(),
+        0,
         Intent(context, ReminderReceiver::class.java)
+            .setData(Uri.parse("voicecatcher://reminder/${task.id}"))
             .putExtra(ReminderReceiver.EXTRA_TITLE, task.title)
             .putExtra(ReminderReceiver.EXTRA_TASK_ID, task.id),
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,

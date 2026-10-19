@@ -8,83 +8,84 @@ sealed interface VoiceAction {
     data class Clarify(val message: String) : VoiceAction
 }
 
-/** Deterministic local command parsing. Explicit priority words always win over routine reminders. */
+/** All duration arithmetic is anchored to the capture time, not delayed location lookups. */
 object VoiceCommandParser {
-    private val completionPattern = Regex("""^(?:i )?(?:completed|finished|done with|mark)\s+(.+?)(?:\s+(?:as\s+)?done)?$""", RegexOption.IGNORE_CASE)
-    private val priorityOnePattern = Regex("""\b(?:p\s*[- ]?\s*1|priority\s*1|urgent|emergency|critical|asap|immediately)\b""", RegexOption.IGNORE_CASE)
-    private val intervalPattern = Regex("""\bevery\s+(\d+)\s*(minute|minutes|hour|hours)\b""", RegexOption.IGNORE_CASE)
-    private val timePattern = Regex("""\bat\s+(\d{1,2})(?:(?::|\.|\s+)(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)?\b""", RegexOption.IGNORE_CASE)
-    private val reminderLeadPattern = Regex("""^(?:remind me|tell me|reminder|alarm|notify me)\s*(?:to)?\s*""", RegexOption.IGNORE_CASE)
-    private val dayWordPattern = Regex("""\b(?:today|tomorrow|tonight)\b""", RegexOption.IGNORE_CASE)
+    private val completion = Regex("""^(?:i(?:'ve| have)?\s+)?(?:completed|finished|done with)\s+(.+)$""", RegexOption.IGNORE_CASE)
+    private val markDone = Regex("""^mark\s+(.+?)\s+(?:(?:as|has)\s+)?(?:done|complete|completed)$""", RegexOption.IGNORE_CASE)
+    private val p1 = Regex("""\b(?:p\s*[- ]?\s*1|priority\s*(?:one|1)|urgent|emergency|critical|asap|immediately)\b""", RegexOption.IGNORE_CASE)
+    private val p2 = Regex("""\b(?:p\s*[- ]?\s*2|priority\s*(?:two|2))\b""", RegexOption.IGNORE_CASE)
+    private const val quantity = "(?:[0-9]+(?:\\.[0-9]+)?|half|quarter|an?|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty(?:[ -](?:one|two|three|four|five|six|seven|eight|nine))?|thirty|forty|forty-five|forty five|sixty|ninety)"
+    private val relative = Regex("""\b(?:in|after)\s+($quantity)\s*(seconds?|secs?|minutes?|mins?|hours?|hrs?)(?:\s+(?:and\s+)?($quantity)\s*(minutes?|mins?|seconds?|secs?))?\b""", RegexOption.IGNORE_CASE)
+    private val interval = Regex("""\bevery\s+($quantity)\s*(minutes?|mins?|hours?|hrs?)\b""", RegexOption.IGNORE_CASE)
+    private val clock = Regex("""\bat\s+(\d{1,2})(?:(?::|\.|\s+)(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)?\b""", RegexOption.IGNORE_CASE)
+    private val lead = Regex("""^(?:please\s+)?(?:remind me|tell me|set (?:an? )?(?:alarm|reminder)|reminder|alarm|notify me)\s*(?:to)?\s*""", RegexOption.IGNORE_CASE)
+    private val day = Regex("""\b(?:today|tomorrow|tonight)\b""", RegexOption.IGNORE_CASE)
+    private val words = mapOf("a" to 1.0, "an" to 1.0, "one" to 1.0, "two" to 2.0, "three" to 3.0,
+        "four" to 4.0, "five" to 5.0, "six" to 6.0, "seven" to 7.0, "eight" to 8.0, "nine" to 9.0,
+        "ten" to 10.0, "eleven" to 11.0, "twelve" to 12.0, "fifteen" to 15.0, "twenty" to 20.0,
+        "thirty" to 30.0, "forty" to 40.0, "sixty" to 60.0, "ninety" to 90.0, "half" to .5, "quarter" to .25)
 
     fun parse(transcript: String, now: LocalDateTime = LocalDateTime.now()): VoiceAction {
-        val cleaned = transcript.trim().replace(Regex("[.!?]+$"), "")
-        if (cleaned.isBlank()) return VoiceAction.Clarify("I did not catch that. Please try again.")
-        completionPattern.find(cleaned)?.groupValues?.getOrNull(1)?.trim()?.takeIf { it.isNotBlank() }?.let {
-            return VoiceAction.CompleteTask(it)
+        val text = transcript.trim().replace(Regex("[.!?]+$"), "")
+        if (text.isBlank()) return VoiceAction.Clarify("I did not catch that. Please try again.")
+        (markDone.find(text) ?: completion.find(text))?.groupValues?.get(1)?.trim()?.let { return VoiceAction.CompleteTask(it) }
+        val urgent = p1.containsMatchIn(text)
+        val gentle = p2.containsMatchIn(text)
+        if (urgent && gentle) return VoiceAction.Clarify("Choose P1 or P2 for this reminder.")
+        val repeats = interval.find(text)
+        if (repeats != null) {
+            if (urgent) return VoiceAction.Clarify("Use a specific time or delay for an urgent P1 alarm. Repeating reminders use P2.")
+            val seconds = seconds(repeats.groupValues[1], repeats.groupValues[2])
+            val minutes = seconds?.div(60)?.takeIf { it in 1..1440 }
+            if (minutes == null) return VoiceAction.Clarify("Choose a repeating gap between 1 minute and 24 hours.")
+            return VoiceAction.CreateTask(title(text, interval), ReminderPriority.P2, now.plusMinutes(minutes), minutes.toInt())
         }
-
-        val isPriorityOne = priorityOnePattern.containsMatchIn(cleaned)
-        val intervalMatch = intervalPattern.find(cleaned)
-        if (intervalMatch != null && isPriorityOne) {
-            return VoiceAction.Clarify("Use either an urgent P1 alarm with a specific time, or a repeating P2 reminder — not both in one command.")
+        val delay = relative.find(text)
+        val time = clock.find(text)
+        if (delay != null && time != null) return VoiceAction.Clarify("Choose a delay or a clock time, not both.")
+        if (delay != null) {
+            if (day.containsMatchIn(text)) return VoiceAction.Clarify("For a delay, say ‘in 5 minutes’ without today or tomorrow, or choose a clock time.")
+            val first = seconds(delay.groupValues[1], delay.groupValues[2])
+            val second = if (delay.groupValues[3].isBlank()) 0L else seconds(delay.groupValues[3], delay.groupValues[4])
+            val total = if (first == null || second == null) null else first + second
+            if (total == null || total !in 1L..604800L) return VoiceAction.Clarify("Choose a positive delay of up to 7 days.")
+            return VoiceAction.CreateTask(title(text, relative), if (gentle) ReminderPriority.P2 else ReminderPriority.P1, now.plusSeconds(total))
         }
-        if (intervalMatch != null) {
-            val amount = intervalMatch.groupValues[1].toIntOrNull()
-            val unit = intervalMatch.groupValues[2].lowercase()
-            val minutes = amount?.times(if (unit.startsWith("hour")) 60 else 1)
-            if (minutes == null || minutes !in 1..(24 * 60)) return VoiceAction.Clarify("Choose a repeating gap between 1 minute and 24 hours.")
-            return VoiceAction.CreateTask(
-                title = taskTitle(cleaned, intervalPattern),
-                priority = ReminderPriority.P2,
-                dueAt = now.plusMinutes(minutes.toLong()),
-                repeatMinutes = minutes,
-            )
+        val isReminder = lead.containsMatchIn(text) || urgent || gentle || time != null
+        if (isReminder) {
+            val due = time?.let { parseClock(it, text, now) }
+                ?: return VoiceAction.Clarify("Try ‘remind me in 5 minutes’, ‘after one hour’, or ‘at 5:15 PM’. Urgent sets P1.")
+            return VoiceAction.CreateTask(title(text, clock), if (gentle) ReminderPriority.P2 else ReminderPriority.P1, due)
         }
-
-        val time = timePattern.find(cleaned)
-        val isReminder = cleaned.contains("remind me", ignoreCase = true) || cleaned.contains("tell me", ignoreCase = true) || cleaned.contains("alarm", ignoreCase = true)
-        if (isPriorityOne || isReminder) {
-            val dueAt = time?.let { parseTime(it, cleaned, now) }
-            if (dueAt == null) return VoiceAction.Clarify("For an alarm, include a time such as ‘remind me at 5:15 PM to have lunch’.")
-            return VoiceAction.CreateTask(
-                title = taskTitle(cleaned, timePattern),
-                priority = ReminderPriority.P1,
-                dueAt = dueAt,
-            )
-        }
-
-        val taskTitle = cleaned
-            .replaceFirst(Regex("""^(?:add|note)\s+""", RegexOption.IGNORE_CASE), "")
-            .replace(Regex("""\s+(?:to\s+)?(?:my\s+)?(?:to ?do|todo|task|list).*$""", RegexOption.IGNORE_CASE), "")
-            .trim()
-        return VoiceAction.CreateTask(taskTitle.ifBlank { "New task" }, ReminderPriority.P2, null)
+        val name = text.replaceFirst(Regex("""^(?:add|note)\s+""", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("""\s+(?:to\s+)?(?:my\s+)?(?:to ?do|todo|task|list).*$""", RegexOption.IGNORE_CASE), "").trim()
+        return VoiceAction.CreateTask(name.ifBlank { "New task" }, ReminderPriority.P2, null)
     }
 
-    private fun parseTime(match: MatchResult, transcript: String, now: LocalDateTime): LocalDateTime? {
-        val hourInput = match.groupValues[1].toIntOrNull() ?: return null
-        val minute = match.groupValues[2].ifBlank { "0" }.toIntOrNull() ?: return null
+    private fun seconds(value: String, unit: String): Long? {
+        val amount = value.lowercase().let { it.toDoubleOrNull() ?: it.replace('-', ' ').split(' ').map { part -> words[part] ?: return null }.sum() }
+        val multiplier = when { unit.lowercase().startsWith("h") -> 3600; unit.lowercase().startsWith("m") -> 60; else -> 1 }
+        val result = amount * multiplier
+        return result.takeIf { it.isFinite() && it > 0 && it <= 604800 }?.toLong()
+    }
+
+    private fun parseClock(match: MatchResult, text: String, now: LocalDateTime): LocalDateTime? {
+        val h = match.groupValues[1].toIntOrNull() ?: return null
+        val m = match.groupValues[2].ifBlank { "0" }.toIntOrNull() ?: return null
         val suffix = match.groupValues[3].lowercase().replace(".", "")
-        if (minute !in 0..59 || (suffix.isBlank() && hourInput !in 0..23) || (suffix.isNotBlank() && hourInput !in 1..12)) return null
-        val hour24 = when {
-            suffix == "am" && hourInput == 12 -> 0
-            suffix == "pm" && hourInput != 12 -> hourInput + 12
-            suffix.isBlank() -> hourInput
-            else -> hourInput
+        if (m !in 0..59 || (suffix.isBlank() && h !in 0..23) || (suffix.isNotBlank() && h !in 1..12)) return null
+        val hour = when { suffix == "am" && h == 12 -> 0; suffix == "pm" && h != 12 -> h + 12; else -> h }
+        var due = now.withHour(hour).withMinute(m).withSecond(0).withNano(0)
+        if (Regex("""\btomorrow\b""", RegexOption.IGNORE_CASE).containsMatchIn(text)) due = due.plusDays(1)
+        else if (!due.isAfter(now)) {
+            if (Regex("""\btoday\b""", RegexOption.IGNORE_CASE).containsMatchIn(text)) return null
+            due = due.plusDays(1)
         }
-        var dueAt = now.withHour(hour24).withMinute(minute).withSecond(0).withNano(0)
-        if (transcript.contains("tomorrow", ignoreCase = true) || !dueAt.isAfter(now)) dueAt = dueAt.plusDays(1)
-        return dueAt
+        return due
     }
 
-    private fun taskTitle(transcript: String, removable: Regex?): String = transcript
-        .replace(priorityOnePattern, "")
-        .replaceFirst(Regex("""^\s*[-,:]?\s*"""), "")
-        .replaceFirst(reminderLeadPattern, "")
-        .let { value -> removable?.let { value.replace(it, "") } ?: value }
-        .replace(dayWordPattern, "")
+    private fun title(text: String, timing: Regex): String = text.replace(p1, "").replace(p2, "")
+        .trim(' ', '-', ',', ':').replaceFirst(lead, "").replace(timing, "").replace(day, "")
         .replaceFirst(Regex("""^\s*(?:to|that I should)\s+""", RegexOption.IGNORE_CASE), "")
-        .replace(Regex("""\s+"""), " ")
-        .trim(' ', '-', ',', ':')
-        .ifBlank { "Reminder" }
+        .replace(Regex("""\s+"""), " ").trim(' ', '-', ',', ':', '.').ifBlank { "Reminder" }
 }
