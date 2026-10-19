@@ -1,6 +1,10 @@
 package com.puneeee.voicecatcher
 
 import androidx.compose.ui.test.*
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.test.platform.app.InstrumentationRegistry
+import android.graphics.Bitmap
+import java.io.File
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Before
@@ -17,18 +21,36 @@ class AppFlowTest {
     @Before fun reset() {
         compose.runOnIdle { val store = TaskStore(compose.activity); store.clearTasks(); store.clearCaptures(); store.upsert(sample) }
     }
+    private fun taskVisible() {
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasTestTag("task-${sample.id}"))
+    }
+    private fun screenshot(name: String) {
+        compose.waitForIdle()
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val folder = File(context.getExternalFilesDir(null), "screenshots").apply { mkdirs() }
+        File(folder, "$name.png").outputStream().use {
+            compose.onRoot().captureToImage().asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 100, it)
+        }
+    }
     @Test fun pagesHaveDistinctContent() {
+        screenshot("home")
         compose.onNodeWithText("Plan", useUnmergedTree = false).performClick()
         compose.onNodeWithText("Your daily plan").assertIsDisplayed()
         compose.onNodeWithText("How to organize your day").assertExists()
+        screenshot("plan")
         compose.onNodeWithText("Settings", useUnmergedTree = false).performClick()
         compose.onNodeWithText("Make it yours").assertIsDisplayed()
         compose.onNodeWithText("Notifications & P1 alarms").assertExists()
+        screenshot("settings")
         compose.onNodeWithText("How to organize your day").assertDoesNotExist()
         compose.onNodeWithText("Search", useUnmergedTree = false).performClick()
         compose.onNodeWithText("Find something").assertIsDisplayed()
+        screenshot("search")
+        compose.onNodeWithText("History", useUnmergedTree = false).performClick()
+        screenshot("history")
     }
     @Test fun completedTaskLeavesHomeAndAppearsInCompleted() {
+        taskVisible()
         compose.onNodeWithText("Done", useUnmergedTree = false).performScrollTo().performClick()
         compose.onNodeWithTag("task-${sample.id}").assertDoesNotExist()
         compose.onNodeWithText("History", useUnmergedTree = false).performClick()
@@ -36,6 +58,7 @@ class AppFlowTest {
         compose.onNodeWithText("Completed", useUnmergedTree = false).assertExists()
     }
     @Test fun serviceStyleCompletionRefreshesTheVisibleList() {
+        taskVisible()
         compose.onNodeWithTag("task-${sample.id}").assertExists()
         compose.runOnIdle { TaskOperations.complete(compose.activity, sample.id) }
         compose.waitForIdle()
@@ -46,13 +69,37 @@ class AppFlowTest {
     @Test fun externalSnoozeUpdateIsVisibleWithoutRestart() {
         compose.runOnIdle { TaskStore(compose.activity).mutateTask(sample.id) { TaskState.snooze(it, 17, LocalDateTime.now()) } }
         compose.waitForIdle()
+        taskVisible()
         compose.onNodeWithText("Snoozed until", substring = true).assertExists()
         compose.onNodeWithText("1 snooze(s)", substring = true).assertExists()
     }
     @Test fun customSnoozePickerAcceptsNonPresetMinutes() {
+        taskVisible()
         compose.onNodeWithText("Snooze", useUnmergedTree = false).performScrollTo().performClick()
         compose.onNodeWithTag("snooze-minutes").performTextReplacement("17")
         compose.onNodeWithTag("confirm-snooze").assertIsDisplayed()
-        // Permission-dependent AlarmManager delivery is device-tested separately.
+        compose.onNodeWithTag("confirm-snooze").performClick()
+        compose.waitForIdle()
+        val updated = TaskStore(compose.activity).load().single { it.id == sample.id }
+        org.junit.Assert.assertEquals(1, updated.snoozeCount)
+        val difference = java.time.Duration.between(updated.snoozedAt, updated.dueAt).toMinutes()
+        org.junit.Assert.assertEquals(17L, difference)
+        taskVisible()
+        compose.onNodeWithText("Snoozed until", substring = true).assertExists()
+    }
+    @Test fun editingUpdatesTheSameTaskAndCategory() {
+        taskVisible()
+        compose.onNodeWithText("Edit").performScrollTo().performClick()
+        compose.onNodeWithText("Task name").performTextReplacement("Updated task")
+        compose.onNodeWithText("Health", useUnmergedTree = false).performClick()
+        compose.onNodeWithText("Save task").performClick()
+        compose.waitForIdle()
+        val saved = TaskStore(compose.activity).load()
+        org.junit.Assert.assertEquals(1, saved.size)
+        org.junit.Assert.assertEquals(sample.id, saved.single().id)
+        org.junit.Assert.assertEquals(TaskCategory.HEALTH, saved.single().category)
+        taskVisible()
+        compose.onNodeWithText("Updated task").assertExists()
+        compose.onNodeWithText(sample.title).assertDoesNotExist()
     }
 }

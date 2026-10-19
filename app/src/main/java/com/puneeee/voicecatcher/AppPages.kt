@@ -222,6 +222,6 @@ fun SettingsPage(accessRevision: Int, onRequestNotifications: () -> Unit, onLoca
     }
     if (confirmErase) AlertDialog(onDismissRequest = { confirmErase = false }, title = { Text("Erase saved data?") },
         text = { Text("This permanently removes tasks and capture history on this phone and cancels their reminders and daily briefs.") },
-        confirmButton = { TextButton(onClick = { onErase(); confirmErase = false }) { Text("Erase all data") } },
+        confirmButton = { TextButton(onClick = { onErase(); dailyEnabled = false; confirmErase = false }) { Text("Erase all data") } },
         dismissButton = { TextButton(onClick = { confirmErase = false }) { Text("Cancel") } })
 }

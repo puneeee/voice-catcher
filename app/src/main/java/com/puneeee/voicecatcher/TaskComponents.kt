@@ -102,7 +102,7 @@ fun TaskEditorDialog(original: Task?, defaultDay: LocalDate, onDismiss: () -> Un
     var priority by rememberSaveable { mutableStateOf(original?.priority?.name ?: "P2") }
     var category by rememberSaveable { mutableStateOf(original?.category?.name ?: "GENERAL") }
     var date by rememberSaveable { mutableStateOf((original?.plannedFor ?: original?.dueAt?.toLocalDate() ?: defaultDay).toString()) }
-    var time by rememberSaveable { mutableStateOf((original?.dueAt?.toLocalTime() ?: LocalTime.now().plusMinutes(10)).withSecond(0).withNano(0).toString()) }
+    var time by rememberSaveable { mutableStateOf((original?.dueAt?.toLocalTime() ?: LocalTime.now().plusMinutes(10).withSecond(0).withNano(0)).toString()) }
     var timed by rememberSaveable { mutableStateOf(original?.dueAt != null || original?.priority == ReminderPriority.P1) }
     var repeat by rememberSaveable { mutableStateOf(original?.repeatMinutes?.toString().orEmpty()) }
     var error by remember { mutableStateOf<String?>(null) }

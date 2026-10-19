@@ -51,10 +51,9 @@ class VoiceCommandParserTest {
     }
     @Test fun `compound duration and half hour work`() {
         val compound = VoiceCommandParser.parse("remind me to leave in one hour and thirty minutes urgent", now) as VoiceAction.CreateTask
-        val half = VoiceCommandParser.parse("remind me in half an hour to leave", now)
+        val half = VoiceCommandParser.parse("remind me in half an hour to leave", now) as VoiceAction.CreateTask
         assertEquals(now.plusMinutes(90), compound.dueAt)
-        // Unsupported ambiguous grammar is clarified, never silently assigned a wrong time.
-        assertTrue(half is VoiceAction.Clarify)
+        assertEquals(now.plusMinutes(30), half.dueAt)
         val direct = VoiceCommandParser.parse("remind me in half hour to leave", now) as VoiceAction.CreateTask
         assertEquals(now.plusMinutes(30), direct.dueAt)
     }

@@ -15,7 +15,7 @@ object VoiceCommandParser {
     private val p1 = Regex("""\b(?:p\s*[- ]?\s*1|priority\s*(?:one|1)|urgent|emergency|critical|asap|immediately)\b""", RegexOption.IGNORE_CASE)
     private val p2 = Regex("""\b(?:p\s*[- ]?\s*2|priority\s*(?:two|2))\b""", RegexOption.IGNORE_CASE)
     private const val quantity = "(?:[0-9]+(?:\\.[0-9]+)?|half|quarter|an?|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty(?:[ -](?:one|two|three|four|five|six|seven|eight|nine))?|thirty|forty|forty-five|forty five|sixty|ninety)"
-    private val relative = Regex("""\b(?:in|after)\s+($quantity)\s*(seconds?|secs?|minutes?|mins?|hours?|hrs?)(?:\s+(?:and\s+)?($quantity)\s*(minutes?|mins?|seconds?|secs?))?\b""", RegexOption.IGNORE_CASE)
+    private val relative = Regex("""\b(?:in|after)\s+($quantity)\s*(?:an?\s+)?(seconds?|secs?|minutes?|mins?|hours?|hrs?)(?:\s+(?:and\s+)?($quantity)\s*(minutes?|mins?|seconds?|secs?))?\b""", RegexOption.IGNORE_CASE)
     private val interval = Regex("""\bevery\s+($quantity)\s*(minutes?|mins?|hours?|hrs?)\b""", RegexOption.IGNORE_CASE)
     private val clock = Regex("""\bat\s+(\d{1,2})(?:(?::|\.|\s+)(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)?\b""", RegexOption.IGNORE_CASE)
     private val lead = Regex("""^(?:please\s+)?(?:remind me|tell me|set (?:an? )?(?:alarm|reminder)|reminder|alarm|notify me)\s*(?:to)?\s*""", RegexOption.IGNORE_CASE)
