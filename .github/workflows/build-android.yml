@@ -32,7 +32,7 @@ jobs:
           gradle-version: "8.9"
 
       - name: Run checks and build debug APK
-        run: gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug
+        run: gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest
 
       - name: Publish debug APK
         uses: actions/upload-artifact@v4
